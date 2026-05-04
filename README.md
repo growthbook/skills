@@ -23,15 +23,24 @@ More skills are on the roadmap: `flag-targeting`, `flag-cleanup`, `experiment-de
 These skills call the MCP — install it first.
 
 ```bash
-claude mcp add growthbook -- npx -y @growthbook/mcp@latest
+claude mcp add growthbook \
+  --transport stdio \
+  --env GB_API_KEY=<your-key> \
+  --env GB_EMAIL=<your-gb-account-email> \
+  -- npx -y @growthbook/mcp@latest
 ```
 
-When prompted, set:
+Required env vars:
 
 - `GB_API_KEY` — your GrowthBook API key ([Personal Access Token](https://app.growthbook.io/settings/keys) or Secret Key).
-- `GB_API_URL` — defaults to `https://api.growthbook.io` for GrowthBook Cloud. Self-hosted users point at their instance.
+- `GB_EMAIL` — the email on your GrowthBook account. Used as the `owner` on flags and experiments created through the MCP. The server will not start without it.
 
-The MCP server name **must be `growthbook`** for the skills' permission rules (`mcp__growthbook__*`) to match.
+Optional env vars (self-hosted only):
+
+- `GB_API_URL` — defaults to `https://api.growthbook.io`.
+- `GB_APP_ORIGIN` — defaults to `https://app.growthbook.io`.
+
+The MCP server name **must be `growthbook`** — the skills' permission rules use the slug `mcp__growthbook__*`. Verify with `claude mcp get growthbook`.
 
 ### 2. Install the plugin
 
