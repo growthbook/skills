@@ -1,7 +1,6 @@
 ---
 name: experiment-brainstorm
-description: Proposes new GrowthBook experiment ideas grounded in the team's past experiment history. Use when the user asks "what should we test next", "give me experiment ideas", "what's worth A/B testing", or wants to brainstorm tests informed by prior results. Reads stopped experiments via the GrowthBook MCP and proposes hypotheses that build on or contrast with observed history. Does not create experiments — proposal only.
-when_to_use: User wants ideas for new experiments, grounded in their actual data. Trigger on "what experiments should we run", "give me test ideas", "brainstorm A/B tests", "what's worth testing next", "ideas for experiments". Skip if the user is asking to design one specific test (use experiment-design), to launch an experiment (use experiment-launch), or to read the result of one (use experiment-analyze).
+description: Propose new experiment ideas grounded in the team's past stopped experiments via the GrowthBook MCP. Use when the user asks "what should we test next", "give me experiment ideas", "brainstorm A/B tests", "what's worth testing", or "ideas for experiments". Proposes only — does not create experiments. For designing a specific test, use experiment-design. For reading results of one, use experiment-analyze.
 allowed-tools: mcp__growthbook__get_experiments
 ---
 

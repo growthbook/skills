@@ -1,7 +1,6 @@
 ---
 name: flag-discovery
-description: Lists, audits, and identifies stale GrowthBook feature flags through the GrowthBook MCP server. Use when the user asks to see what flags exist, find stale or unused flags, audit flag health, or assess removal readiness. Phrases like "what flags do we have", "list our feature flags", "find stale flags", "which flags can we clean up", "audit our flags". Reads only; does not modify or delete anything.
-when_to_use: User wants visibility into existing feature flags — listing, auditing, finding stale or removable flags. Trigger on "list flags", "find stale flags", "audit flags", "what flags exist", "which flags can we remove", "flag inventory". Skip if the user is asking to actually remove a flag (use flag-cleanup) or to add rules to one (use flag-targeting).
+description: List, inspect, or audit GrowthBook feature flags via the MCP server. Use when the user asks "what flags do we have", "list our feature flags", "find stale flags", "audit our flags", "which flags can we remove", or "tell me about flag X". Read-only — for actually removing a flag, use flag-cleanup. For adding rules, use flag-targeting.
 allowed-tools: mcp__growthbook__list_feature_keys mcp__growthbook__get_feature_flags mcp__growthbook__get_stale_feature_flags
 ---
 

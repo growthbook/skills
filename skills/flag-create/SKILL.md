@@ -1,7 +1,6 @@
 ---
 name: flag-create
-description: Creates a new GrowthBook feature flag through the GrowthBook MCP server. Use when the user asks to add, create, or wrap something in a feature flag — phrases like "add a feature flag", "wrap this in a flag", "create a flag for", "I need a flag to gate this". Handles the empty-project case (first flag in a fresh GrowthBook org). Does not run experiments — for A/B tests, use experiment-design after the flag exists.
-when_to_use: User wants a new feature flag. Trigger phrases include "create a feature flag", "add a flag", "wrap this in a flag", "gate this behind a flag", "feature toggle for X". Skip if the user is asking to add a rule to an existing flag (use flag-targeting), to run an experiment (use experiment-design), or to remove a flag (use flag-cleanup).
+description: Create a new feature flag in GrowthBook via the MCP server. Use when the user asks to "create a feature flag", "add a flag for X", "wrap this in a feature flag", "I need a flag to gate this", or "feature toggle for X". For adding rules to an existing flag, use flag-targeting. For running an A/B test, use experiment-design. For removing a flag, use flag-cleanup.
 allowed-tools: mcp__growthbook__create_feature_flag mcp__growthbook__list_feature_keys mcp__growthbook__get_projects
 ---
 
