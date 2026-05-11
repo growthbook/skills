@@ -1,0 +1,75 @@
+#!/usr/bin/env node
+// gb-call — minimal REST client for the GrowthBook API.
+//
+// Every `growthbook` plugin skill calls this. Reads GB_API_KEY from env,
+// constructs the request, prints the response body to stdout. Non-2xx writes
+// status + body to stderr and exits 1.
+//
+// Usage:
+//   gb-call <METHOD> <PATH> [BODY_FILE | -]
+//
+// Examples:
+//   gb-call GET /api/v1/features
+//   gb-call GET '/api/v1/features?limit=50&projectId=prj_abc'
+//   gb-call POST /api/v1/features ./payload.json
+//   echo '{"id":"foo","valueType":"boolean"}' | gb-call POST /api/v1/features -
+//
+// Env:
+//   GB_API_KEY  (required) — PAT or Secret Key.
+//   GB_API_URL  (optional) — defaults to https://api.growthbook.io.
+
+const { readFileSync } = require("node:fs");
+
+function die(msg, code = 2) {
+  process.stderr.write(msg.endsWith("\n") ? msg : msg + "\n");
+  process.exit(code);
+}
+
+const apiKey = process.env.GB_API_KEY;
+if (!apiKey) die("GB_API_KEY is not set. Export it before calling gb-call.");
+
+const base = (process.env.GB_API_URL || "https://api.growthbook.io").replace(/\/$/, "");
+
+const [method, path, bodyArg] = process.argv.slice(2);
+if (!method || !path) {
+  die("Usage: gb-call <METHOD> <PATH> [BODY_FILE | -]");
+}
+
+const upperMethod = method.toUpperCase();
+if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(upperMethod)) {
+  die(`Unknown method: ${method}`);
+}
+
+let body;
+if (bodyArg === "-") {
+  body = readFileSync(0, "utf8");
+} else if (bodyArg) {
+  try {
+    body = readFileSync(bodyArg, "utf8");
+  } catch (e) {
+    die(`Cannot read body file ${bodyArg}: ${e.message}`);
+  }
+}
+
+const url = `${base}${path.startsWith("/") ? path : "/" + path}`;
+const headers = {
+  Authorization: `Bearer ${apiKey}`,
+  Accept: "application/json",
+};
+if (body) headers["Content-Type"] = "application/json";
+
+(async () => {
+  let res;
+  try {
+    res = await fetch(url, { method: upperMethod, headers, body });
+  } catch (e) {
+    die(`Request failed: ${e.message}`, 1);
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    process.stderr.write(`HTTP ${res.status} ${res.statusText} on ${upperMethod} ${url}\n`);
+    if (text) process.stderr.write(text + "\n");
+    process.exit(1);
+  }
+  process.stdout.write(text);
+})();

@@ -2,11 +2,11 @@
 
 Agent skills for [GrowthBook](https://growthbook.io) — feature flagging and experimentation playbooks for Claude Code, Cursor, and other agent tools that follow the [Agent Skills](https://agentskills.io) standard.
 
-These skills wrap the [GrowthBook MCP server](https://github.com/growthbook/growthbook-mcp) with lifecycle workflows that encode ordering, naming conventions, and known footguns. The MCP exposes the verbs; these skills supply the playbooks.
+The skills call the [GrowthBook REST API](https://docs.growthbook.io/api) directly through a small bundled helper. No MCP server required.
 
-## v0.1.0 — what's included
+## v0.2.0 — what's included
 
-Three skills, all read-only or low-risk and powered entirely by the MCP:
+Three skills, all powered by the REST API:
 
 | Skill | What it does |
 | --- | --- |
@@ -18,38 +18,30 @@ More skills are on the roadmap: `flag-targeting`, `flag-cleanup`, `experiment-de
 
 ## Install
 
-### 1. Install the GrowthBook MCP server
+### 1. Set your GrowthBook API key
 
-These skills call the MCP — install it first.
+Skills authenticate via the `GB_API_KEY` env var. Get a Personal Access Token from [`app.growthbook.io/settings/keys`](https://app.growthbook.io/settings/keys) (or a Secret Key) and export it:
 
 ```bash
-claude mcp add growthbook \
-  --transport stdio \
-  --env GB_API_KEY=<your-key> \
-  --env GB_EMAIL=<your-gb-account-email> \
-  -- npx -y @growthbook/mcp@latest
+export GB_API_KEY=<your-key>
 ```
 
-Required env vars:
+For self-hosted, also export:
 
-- `GB_API_KEY` — your GrowthBook API key ([Personal Access Token](https://app.growthbook.io/settings/keys) or Secret Key).
-- `GB_EMAIL` — the email on your GrowthBook account. Used as the `owner` on flags and experiments created through the MCP. The server will not start without it.
+```bash
+export GB_API_URL=https://api.your-host.com
+```
 
-Optional env vars (self-hosted only):
-
-- `GB_API_URL` — defaults to `https://api.growthbook.io`.
-- `GB_APP_ORIGIN` — defaults to `https://app.growthbook.io`.
-
-The MCP server name **must be `growthbook`** — the skills' permission rules use the slug `mcp__growthbook__*`. Verify with `claude mcp get growthbook`.
+Add the export to your shell rc file so it persists.
 
 ### 2. Install the plugin
 
-```bash
+```text
 /plugin marketplace add growthbook/skills
 /plugin install growthbook@growthbook-skills
 ```
 
-That's it. Restart Claude Code if the skills don't appear immediately.
+That's it. Restart Claude Code if the skills don't appear immediately. Node 18+ is required (it's what Claude Code already runs on, so this is usually satisfied).
 
 ### 3. Verify
 
@@ -68,9 +60,20 @@ Skills can fire two ways:
 
 ## What these skills do not do
 
-- **No writes outside flag creation.** v0.1 deliberately ships only one write skill (`flag-create`). Targeting rules, cleanup, and experiment lifecycle are coming next.
-- **No experiment results analysis.** That needs GrowthBook REST endpoints not yet exposed by the MCP. Coming once the MCP catches up or the plugin ships its own REST helper.
-- **No SDK code generation.** The MCP itself returns SDK snippets when you create a flag; a dedicated `sdk-developer` knowledge skill is on the roadmap.
+- **No writes outside flag creation.** v0.2 deliberately ships only one write skill (`flag-create`). Targeting rules, cleanup, and experiment lifecycle are coming next.
+- **No experiment results analysis.** The `experiment-analyze` skill is on the roadmap and will need this plugin's REST helper to handle snapshot polling and result aggregation.
+- **No SDK code generation.** A dedicated `sdk-install` / `sdk-developer` knowledge skill is on the roadmap.
+
+## How it works
+
+The plugin bundles a small Node helper (`scripts/gb-call`) that handles auth, base URL, and error reporting for every REST request. Skills call it via Bash:
+
+```bash
+gb-call GET /api/v1/features
+echo '<payload>' | gb-call POST /api/v1/features -
+```
+
+See [`scripts/README.md`](scripts/README.md) for the full usage reference.
 
 ## Repository layout
 
@@ -78,17 +81,21 @@ Skills can fire two ways:
 .claude-plugin/
   marketplace.json
   plugin.json
+scripts/
+  gb-call          # Node REST helper, called by every skill
+  README.md
 skills/
   flag-create/SKILL.md
   flag-discovery/SKILL.md
   experiment-brainstorm/SKILL.md
 README.md
 LICENSE
+CHANGELOG.md
 ```
 
 ## Contributing
 
-This is the first public ship. Issues and PRs welcome at [github.com/growthbook/skills](https://github.com/growthbook/skills). For larger proposals (new skills, changes to skill scope), open an issue first.
+Issues and PRs welcome at [github.com/growthbook/skills](https://github.com/growthbook/skills). For larger proposals (new skills, changes to skill scope), open an issue first.
 
 ## License
 

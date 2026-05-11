@@ -1,7 +1,7 @@
 {
   "name": "growthbook",
-  "version": "0.1.0",
-  "description": "GrowthBook agent skills for feature flagging and experimentation. Wraps the GrowthBook MCP server with lifecycle workflows that encode ordering, naming conventions, and known footguns.",
+  "version": "0.2.0",
+  "description": "GrowthBook agent skills for feature flagging and experimentation. Lifecycle playbooks that call the GrowthBook REST API directly through a bundled helper.",
   "author": {
     "name": "GrowthBook",
     "url": "https://growthbook.io"

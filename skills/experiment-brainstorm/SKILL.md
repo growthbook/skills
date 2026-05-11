@@ -1,49 +1,65 @@
 ---
 name: experiment-brainstorm
-description: Propose new experiment ideas grounded in the team's past stopped experiments via the GrowthBook MCP. Use when the user asks "what should we test next", "give me experiment ideas", "brainstorm A/B tests", "what's worth testing", or "ideas for experiments". Proposes only — does not create experiments. For designing a specific test, use experiment-design. For reading results of one, use experiment-analyze.
-allowed-tools: mcp__growthbook__get_experiments
+description: Propose new experiment ideas grounded in the team's past stopped experiments via the GrowthBook REST API. Use when the user asks "what should we test next", "give me experiment ideas", "brainstorm A/B tests", "what's worth testing", or "ideas for experiments". Proposes only — does not create experiments. For designing a specific test, use experiment-design. For reading results of one, use experiment-analyze.
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
 ---
 
 # experiment-brainstorm
 
 Propose new experiment ideas grounded in the team's past stopped experiments. Read history first; propose based on what actually moved metrics, where guardrails failed, and which tags or projects under-explored.
 
+All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It expects `GB_API_KEY` in env.
+
 ## Workflow
 
-1. **Pull the history.** Call `mcp__growthbook__get_experiments` with `mode: "summary"` and `mostRecent: true`. Summary mode returns aggregate stats over **stopped experiments only** — drafts and running experiments are excluded by design. The output includes:
-   - Win rate, average lift, median lift
-   - Top 5 winners and top 5 losers (by absolute lift)
-   - Breakdowns by project, tag, month, type
-   - SRM failure rate and guardrail regression rate
-   - Per-experiment cards with verdict, hypothesis, and metrics
+1. **Pull the experiment list, most recent first.**
+   ```bash
+   gb-call GET '/api/v1/experiments?limit=50'
+   ```
+   Returns up to 50 experiments per page (the API cap). The list includes status — filter to `status: "stopped"` in your reasoning; drafts and running experiments don't have settled results yet.
 
-2. **Read the patterns.** Before proposing anything, identify three things from the summary:
-   - **What's working** — themes shared by the top winners (which projects, which surfaces, which kind of change).
+2. **Fetch results for each stopped experiment.** Loop over the stopped IDs:
+   ```bash
+   gb-call GET /api/v1/experiments/<id>/results
+   ```
+   Pace the calls — the API is rate-limited at 60 requests per minute. Cap the pull at ~20 experiments unless the user explicitly wants more; that's plenty for pattern-finding and stays well inside the budget.
+
+3. **Read the patterns.** From the result payloads, identify three things before proposing anything:
+   - **What's working** — themes shared by experiments where the test variation beat the control (which projects, which surfaces, which kind of change).
    - **What's stalling** — themes shared by losers and inconclusive tests.
    - **What's under-explored** — projects, tags, or surfaces with few experiments compared to the rest.
 
-3. **Propose 5–7 ideas.** Each proposal contains:
+4. **Compute light aggregate context.** Mentally tally — no need to surface a full dashboard:
+   - Approximate win rate (won / total settled).
+   - Top 3 winners by absolute lift on the primary metric.
+   - Top 3 losers by absolute lift.
+   - Any experiments flagged for SRM (sample ratio mismatch).
+   - Project / tag distribution.
+
+5. **Propose 5–7 ideas.** Each proposal contains:
    - **Hypothesis** in one sentence: "If we change X, then Y will improve, because Z."
-   - **Why this is grounded** — one sentence linking it to a specific past experiment in the summary (winner to extend, loser to retry differently, gap to fill).
+   - **Why this is grounded** — one sentence linking it to a specific past experiment (winner to extend, loser to retry differently, gap to fill). Cite the experiment name or ID.
    - **Primary metric** — pick one. State the type (proportion, mean, ratio, quantile) and why.
    - **Expected effect size** — order of magnitude only ("comparable to the +3.2% lift on the checkout flow test"), not a precise number.
    - **Risk to watch** — one guardrail metric or potential regression.
 
-4. **Present with structure.** Lead with the patterns you saw (1–2 lines each), then the proposals. End by asking the user which to refine — do not start designing or creating experiments inside this skill. Hand off to `experiment-design` for the one(s) the user picks.
+6. **Present with structure.** Lead with the patterns you saw (1–2 lines each), then the proposals. End by asking the user which to refine — do not start designing or creating experiments inside this skill. Hand off to `experiment-design` for the one(s) the user picks.
 
 ## Guardrails
 
-- **Summary mode covers stopped experiments only.** Drafts and running experiments are excluded. Don't claim "we've never tried X" if there's a running experiment that does — call `get_experiments` with `mode: "metadata"` separately if the user asks about the live pipeline.
+- **Stopped experiments only.** Filter drafts and running experiments out of your synthesis. If the user asks about the live pipeline, that's a different question — point them at `flag-discovery` or `experiment-design` instead.
 - **Ground every proposal.** Cite the specific past experiment(s) you're building on. No proposals based on generic best practices.
-- **Don't repeat losers without saying why.** If a proposal mirrors a recent loser, say so explicitly and explain what's different this time. Otherwise it reads like ignorance of the data.
-- **Win rate is `won / (won + lost + inconclusive)`.** That matches GrowthBook's own definition. Don't redefine it.
-- **Watch for SRM and guardrail issues in the history.** If the summary reports a high SRM failure rate, mention it and propose at least one idea aimed at improving experiment hygiene rather than another product test.
-- **Propose, do not create.** Never call `create_experiment`. The user's next step is `experiment-design` for the proposal they want to pursue.
+- **Don't repeat losers without saying why.** If a proposal mirrors a recent loser, say so explicitly and explain what's different this time.
+- **Win rate definition:** `won / (won + lost + inconclusive)`. Don't invent another formula.
+- **Watch for SRM and guardrail issues in the history.** If many experiments show SRM failures, mention it and propose at least one idea aimed at improving experiment hygiene rather than another product test.
+- **Propose, do not create.** Never POST to `/api/v1/experiments`. The user's next step is `experiment-design` for the proposal they want to pursue.
 - **Avoid metric-fishing proposals.** Each idea has one primary metric. Don't propose tests with five metrics hoping one moves — that's the "too many primary metrics" footgun.
+- **Rate limit awareness.** 50 experiments + 20 result fetches = ~21 calls; well under the 60 rpm cap. If the user wants more depth, ask before fanning out to >40 calls.
 
-## MCP tools used
+## Endpoints used
 
-- `mcp__growthbook__get_experiments` with `mode: "summary"` — aggregate stats over stopped experiments. The summary includes top winners, top losers, and breakdowns this skill relies on.
+- `GET /api/v1/experiments?limit=50` — list experiments (returns metadata including status). Cap is 50 per page.
+- `GET /api/v1/experiments/{id}/results` — full results for one experiment. One call per stopped experiment in scope.
 
 ## Output template
 
