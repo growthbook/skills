@@ -2,6 +2,22 @@
 
 All notable changes to the `growthbook` plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.3.0] — 2026-05-08
+
+Adds the experiment lifecycle. Four new skills covering design through stop. The flag side stays where it is (create + discovery); flag-targeting and flag-cleanup are still on the roadmap.
+
+### Added
+- `experiment-design` — knowledge-led walk-through of hypothesis, variations, primary metric, guardrails, and sample-size sanity. Reads `/v1/metrics`, `/v1/fact-metrics`, `/v1/projects`, `/v1/data-sources`. Ends with a structured spec; does not write.
+- `experiment-launch` — end-to-end launch covering template selection, hash-attribute → datasource → assignment-query resolution, experiment create, flag create-or-reuse with compatibility checks, atomic draft+rule via `POST /v2/features/<id>/revisions/new/rules`, and `POST /v1/experiments/<id>/start` to publish the draft and flip the experiment to running. Handles the approval-required and pre-launch-checklist failure paths explicitly (steps 6a and 6b in the skill body).
+- `experiment-analyze` — triggers a snapshot, polls `/v1/experiment-snapshots/<id>/status` (5s interval, 60-iteration cap), then interprets `/v1/experiments/<id>/results`. SRM check first, primary metric, guardrails, secondaries. Read-only.
+- `experiment-stop` — updates experiment status via `POST /v1/experiments/<id>`, optionally declaring a winner. Bakes in the documented footgun: `winner` is a 0-based integer index, not a name or key.
+
+### Roadmap (still pending)
+- Flag lifecycle: `flag-targeting`, `flag-cleanup`.
+- Metrics: `metric-choose`, `metric-create`, `metric-instrument`.
+- Onboarding: `onboarding`, `sdk-install`.
+- Knowledge: `sdk-developer`, `experiment-statistics`.
+
 ## [0.2.1] — 2026-05-08
 
 Switches the feature-flag skills to GrowthBook's v2 feature endpoints. The v2 surface is now the recommended path; v1 still works but is treated as legacy by the docs.
@@ -55,6 +71,7 @@ Initial public release. Three MCP-only skills built on the [GrowthBook MCP serve
 - Onboarding: `onboarding`, `sdk-install`.
 - Knowledge: `sdk-developer`, `experiment-statistics`.
 
+[0.3.0]: https://github.com/growthbook/skills/releases/tag/v0.3.0
 [0.2.1]: https://github.com/growthbook/skills/releases/tag/v0.2.1
 [0.2.0]: https://github.com/growthbook/skills/releases/tag/v0.2.0
 [0.1.0]: https://github.com/growthbook/skills/releases/tag/v0.1.0

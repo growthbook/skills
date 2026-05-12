@@ -4,17 +4,26 @@ Agent skills for [GrowthBook](https://growthbook.io) — feature flagging and ex
 
 The skills call the [GrowthBook REST API](https://docs.growthbook.io/api) directly through a small bundled helper. No MCP server required.
 
-## v0.2.0 — what's included
+## v0.3.0 — what's included
 
-Three skills, all powered by the REST API:
+Seven skills, all powered by the REST API:
 
+### Feature flags
 | Skill | What it does |
 | --- | --- |
 | `flag-create` | Create a new feature flag, with collision check, valueType picking, and the "flag is created disabled" reminder. |
 | `flag-discovery` | List flags, inspect one, or audit for stale flags. Reads only. |
-| `experiment-brainstorm` | Propose new experiment ideas grounded in your team's past stopped-experiment history. |
 
-More skills are on the roadmap: `flag-targeting`, `flag-cleanup`, `experiment-design`, `experiment-launch`, `experiment-analyze`, `experiment-stop`, plus dedicated metric and SDK skills.
+### Experimentation
+| Skill | What it does |
+| --- | --- |
+| `experiment-brainstorm` | Propose new experiment ideas grounded in your team's past stopped-experiment history. |
+| `experiment-design` | Walk through hypothesis, variations, primary metric, guardrails, and sample size to produce a launchable spec. Reads only. |
+| `experiment-launch` | End-to-end launch: create the experiment, prep the flag, wire the experiment-ref rule, and call `/start`. Handles approval and pre-launch checklist failure paths. |
+| `experiment-analyze` | Trigger a fresh snapshot, poll until ready, then interpret results (SRM check, lifts, CIs, guardrails). |
+| `experiment-stop` | Stop a running experiment, optionally declaring a winning variation. |
+
+More skills are on the roadmap: `flag-targeting`, `flag-cleanup`, plus dedicated metric and SDK skills.
 
 ## Install
 
