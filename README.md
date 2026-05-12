@@ -18,13 +18,16 @@ More skills are on the roadmap: `flag-targeting`, `flag-cleanup`, `experiment-de
 
 ## Install
 
-### 1. Set your GrowthBook API key
+### 1. Set your GrowthBook env vars
 
-Skills authenticate via the `GB_API_KEY` env var. Get a Personal Access Token from [`app.growthbook.io/settings/keys`](https://app.growthbook.io/settings/keys) (or a Secret Key) and export it:
+Skills authenticate via two env vars:
 
 ```bash
-export GB_API_KEY=<your-key>
+export GB_API_KEY=<your-key>         # required: PAT or Secret Key
+export GB_EMAIL=you@example.com      # required: used as the owner on created flags
 ```
+
+Get a Personal Access Token from [`app.growthbook.io/settings/keys`](https://app.growthbook.io/settings/keys). `GB_EMAIL` is the address you use to sign in to GrowthBook — the v2 features API requires an `owner` on every created flag.
 
 For self-hosted, also export:
 
@@ -32,7 +35,7 @@ For self-hosted, also export:
 export GB_API_URL=https://api.your-host.com
 ```
 
-Add the export to your shell rc file so it persists.
+Add the exports to your shell rc file so they persist.
 
 ### 2. Install the plugin
 

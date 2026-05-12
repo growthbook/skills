@@ -1,6 +1,6 @@
 {
   "name": "growthbook",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "GrowthBook agent skills for feature flagging and experimentation. Lifecycle playbooks that call the GrowthBook REST API directly through a bundled helper.",
   "author": {
     "name": "GrowthBook",

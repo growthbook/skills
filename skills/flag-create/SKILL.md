@@ -8,17 +8,17 @@ allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
 
 Create a new feature flag in GrowthBook. The flag ships **disabled in every environment** — the user must enable it after creation. Feature keys are permanent; pick the name carefully.
 
-All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It expects `GB_API_KEY` in env; see the plugin README if it's missing.
+All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It expects `GB_API_KEY` and `GB_EMAIL` in env; see the plugin README if either is missing.
 
 ## Workflow
 
 1. **Confirm intent.** Restate what the flag will gate in one sentence. Stop if the user actually wants an experiment (route to `experiment-design`) or a rule on an existing flag (route to `flag-targeting`).
 
-2. **Check the key isn't taken.** Run:
+2. **Check the key isn't taken.**
    ```bash
-   gb-call GET /api/v1/feature-keys
+   gb-call GET /api/v2/feature-keys
    ```
-   Verify the proposed key isn't already in the returned list. If it is, propose a variant; the API will error on collision and the key cannot be renamed afterward.
+   Verify the proposed key isn't already in the returned list. If it is, propose a variant; the API will reject the collision and the key cannot be renamed afterward.
 
 3. **Pick a value type.** One of `string`, `number`, `boolean`, `json`. Default to `boolean` for an on/off gate. Use `string` or `json` only when the flag carries config (variant copy, threshold values, structured payload).
 
@@ -28,31 +28,32 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
    ```
    Flags scoped to a project are easier to govern than the default org-wide bucket. If unclear, ask the user.
 
-5. **Resolve environments.** GrowthBook expects the create payload to include an `environments` map with every environment listed. Get them:
+5. **Resolve environments.** GrowthBook expects the create payload to include an `environments` map listing every environment. Get them:
    ```bash
    gb-call GET /api/v1/environments
    ```
-   Build the map with each env disabled and no rules.
+   Build the map with each environment disabled.
 
-6. **Confirm naming.** Default to kebab-case (`new-checkout-flow`, `dark-mode`, `pricing-experiment-2026-q2`). The API accepts a broader regex, but kebab-case keeps keys consistent across teams. Show the proposed key to the user before creating.
+6. **Confirm naming.** v2 accepts only `[a-zA-Z0-9_-]` in feature IDs — kebab-case fits cleanly (`new-checkout-flow`, `dark-mode`, `pricing-experiment-2026-q2`) and keeps keys consistent across teams. Show the proposed key to the user before creating.
 
 7. **Build the payload and create the flag.** Construct a JSON object:
    ```json
    {
      "id": "<kebab-case-key>",
+     "owner": "<user email from GB_EMAIL>",
      "valueType": "boolean",
      "defaultValue": "false",
      "description": "<short description>",
      "environments": {
-       "production": { "enabled": false, "rules": [] },
-       "staging":    { "enabled": false, "rules": [] }
+       "production": { "enabled": false },
+       "staging":    { "enabled": false }
      },
      "project": "<project-id, omit if org-wide>"
    }
    ```
    Then POST it:
    ```bash
-   echo '<payload-json>' | gb-call POST /api/v1/features -
+   echo '<payload-json>' | gb-call POST /api/v2/features -
    ```
 
 8. **State what happens next.** Tell the user explicitly: the flag is **disabled in all environments** and has **no rules** yet. Offer two follow-ups:
@@ -62,17 +63,20 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 ## Guardrails
 
 - **Feature keys are permanent.** GrowthBook does not let you rename a flag's `id` after creation. Confirm the proposed name with the user before calling the API.
+- **`owner` is required by the v2 API.** Read it from `GB_EMAIL` in env. If the variable is missing, ask the user for their email and tell them to export `GB_EMAIL` alongside `GB_API_KEY` to avoid prompting next time.
+- **ID character set narrowed in v2.** Only letters, digits, `-`, and `_` are accepted. The MCP era accepted `.`, `:`, `|` too — that's gone. Use kebab-case.
 - **Flags are created disabled.** The flag does nothing until the user enables it in at least one environment. Always say so in your reply — silent zero evaluation is a top GrowthBook footgun.
-- **`defaultValue` is what the SDK returns until rules apply.** If the user wants the flag off by default, set `defaultValue` to `"false"` (boolean) or the empty/safe value (string/number/json). Note that defaultValue is always serialized as a string in the payload.
+- **`defaultValue` is always serialized as a string.** `"false"` for boolean off, `"0"` for numeric, JSON-encoded text for `json`. The API rejects non-string values.
+- **v2 environments map is just `{enabled: bool}` per env.** Rules are no longer nested under each environment — they're a top-level array on the flag (added later via `flag-targeting` or the revision endpoints). Do not include `rules: []` inside each env.
 - **Stop before creating if the user wants an experiment.** Hand off to `experiment-design`. Creating a flag without the corresponding experiment is a common confusion that produces orphaned flags.
 - **Ask, do not guess.** If `valueType`, `defaultValue`, or project are ambiguous, ask. The flag is permanent.
 
 ## Endpoints used
 
-- `GET /api/v1/feature-keys` — list all feature flag keys (no pagination cap)
+- `GET /api/v2/feature-keys` — list all feature flag keys (no pagination cap)
 - `GET /api/v1/projects` — list projects, used to resolve a project name to an ID
 - `GET /api/v1/environments` — list environments, used to construct the `environments` map
-- `POST /api/v1/features` — create the flag
+- `POST /api/v2/features` — create the flag
 
 ## After creation
 

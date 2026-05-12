@@ -2,6 +2,16 @@
 
 All notable changes to the `growthbook` plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.2.1] — 2026-05-08
+
+Switches the feature-flag skills to GrowthBook's v2 feature endpoints. The v2 surface is now the recommended path; v1 still works but is treated as legacy by the docs.
+
+### Changed
+- `flag-create` and `flag-discovery` now call `/api/v2/features`, `/api/v2/feature-keys`, `/api/v2/features/{id}`, and `/api/v2/stale-features` (project, environment, and other resources stay on v1 — they have no v2 form yet).
+- `flag-create` payload updated for the v2 shape: `owner` is now required; the per-environment `rules` array is removed (rules in v2 are a flat top-level array with `allEnvironments` / `environments` scope).
+- `flag-create` guidance: feature-flag IDs in v2 accept only `[a-zA-Z0-9_-]`. The MCP era allowed `.`, `:`, `|` — those no longer pass v2 validation. Kebab-case remains the recommendation.
+- README install step adds `GB_EMAIL` as a required env var (used to populate the v2 `owner` field).
+
 ## [0.2.0] — 2026-05-08
 
 **Architecture change: REST-only.** The plugin no longer depends on the GrowthBook MCP server. Skills call the GrowthBook REST API directly through a small bundled Node helper.
@@ -45,5 +55,6 @@ Initial public release. Three MCP-only skills built on the [GrowthBook MCP serve
 - Onboarding: `onboarding`, `sdk-install`.
 - Knowledge: `sdk-developer`, `experiment-statistics`.
 
+[0.2.1]: https://github.com/growthbook/skills/releases/tag/v0.2.1
 [0.2.0]: https://github.com/growthbook/skills/releases/tag/v0.2.0
 [0.1.0]: https://github.com/growthbook/skills/releases/tag/v0.1.0
