@@ -55,9 +55,13 @@ Surface: default value, environments enabled, rules array (top-level in v2, each
    gb-call GET '/api/v2/stale-features?ids=flag-a,flag-b,flag-c'
    ```
 
-3. Present the report grouped by recommendation: launched (safe to remove), unused, in-use but old. Quote the replacement values the API surfaces — they tell the user what to inline when removing.
+   What "stale" means here, per the GrowthBook docs: a flag flagged as stale meets **both** (a) no updates for two weeks **and** (b) either no active environments **or** one-sided rules routing 100% of traffic to a single variation. The endpoint encodes these rules — don't reimplement them.
 
-4. Do **not** delete anything. This skill audits; cleanup is a separate skill (`flag-cleanup`) that the user must opt into.
+3. **Honor the `neverStale` flag.** If a feature has `neverStale: true` set in GrowthBook, the response returns `staleReason: "never-stale"`. Surface these separately and do **not** include them in cleanup recommendations — they're deliberately permanent (kill switches, ops toggles, license gates).
+
+4. Present the report grouped by recommendation: launched (safe to remove), unused, in-use but old, never-stale (excluded). Quote the replacement values the API surfaces — they tell the user what to inline when removing.
+
+5. Do **not** delete anything. This skill audits; cleanup is a separate skill (`flag-cleanup`) that the user must opt into.
 
 ## Guardrails
 
@@ -65,7 +69,8 @@ Surface: default value, environments enabled, rules array (top-level in v2, each
 - **`/feature-keys` is unpaginated; `/features` is.** Use `/feature-keys` for full inventory and `/features` for details. Don't loop `/features` to enumerate the whole org when one call to `/feature-keys` does it.
 - **v2 rule shape is flat.** Under v2, rules live in a single top-level `rules` array with `allEnvironments` / `environments` scope per rule — not nested under each environment as in v1. Read the response shape accordingly when inspecting a flag.
 - **Read-only.** This skill never writes. If the user asks to remove a flag, hand off to `flag-cleanup`.
-- **Don't infer "stale" yourself.** Use `/stale-features` for the canonical determination — it encodes GrowthBook's own staleness rules and surfaces replacement values you can't compute locally.
+- **Don't infer "stale" yourself.** Use `/stale-features` for the canonical determination — it encodes GrowthBook's own staleness rules (no updates 2w AND (no active envs OR one-sided rules)) and surfaces replacement values you can't compute locally.
+- **`neverStale: true` flags are excluded from cleanup recommendations.** The endpoint returns `staleReason: "never-stale"` for them; surface separately and don't propose deleting them.
 - **Rate limit is 60 rpm.** If listing a huge org with `/features` pagination, pace yourself.
 
 ## Endpoints used

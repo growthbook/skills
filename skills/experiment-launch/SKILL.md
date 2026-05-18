@@ -58,6 +58,8 @@ gb-call GET /api/v1/experiment-templates
 
 If chosen, capture: `id` (becomes `templateId`), `datasource`, `exposureQueryId`, `hashAttribute`, `goalMetrics`, `statsEngine`, `targeting`. Templates inject all of these; skip step 2 entirely.
 
+If the template's `type` is `"multi-armed-bandit"`, halt and confirm with the user. Bandits behave very differently from standard A/B tests (dynamic traffic allocation, per-arm probabilities instead of winner/loser, different analysis), and this skill's launch and analysis assumptions are written for `type: "standard"`. Recommend they configure bandits in the UI for now.
+
 ### 2. Resolve hash attribute → datasource → assignment query → metrics
 
 No-template path only. Order matters — pick hash attribute first so you don't trap yourself on a datasource that can't randomize on it.
@@ -94,9 +96,9 @@ gb-call GET '/api/v1/metrics?datasourceId=<DATASOURCE_ID>&limit=100'
 ```
 
 Help the user pick:
-- **Exactly one goal metric** (`GOAL_METRIC_ID`). Push back if they name more than one — demote the rest to secondary or guardrail.
+- **Goal metric(s)** (`GOAL_METRIC_IDS`). Ideally one, two max — push back at three or more and demote the rest to secondary or guardrail.
 - **Secondary metrics** (`SECONDARY_METRIC_IDS`) — supporting context.
-- **Guardrail metrics** (`GUARDRAIL_METRIC_IDS`) — defensive. Push back if they name none; every experiment needs at least one.
+- **Guardrail metrics** (`GUARDRAIL_METRIC_IDS`) — defensive. Push back if they name none; every experiment needs at least one. Guardrails are excluded from multiple-comparison correction by design.
 
 ### 3. Create the experiment in draft
 
@@ -149,7 +151,9 @@ Then POST:
 echo '<payload-json>' | gb-call POST /api/v1/experiments -
 ```
 
-Capture `experiment.id` from the response.
+Capture from the response:
+- `experiment.id` — used in steps 5 and 6.
+- `experiment.variations[].variationId` — the **string ID** for each variation (e.g. `var_abc123`). You need these in step 5; they are required on the `experiment-ref` rule.
 
 ### 4. Create or reuse the feature flag
 
@@ -208,8 +212,8 @@ Use the literal version `new` to create a draft and add the rule in one call. Th
     "enabled": true,
     "allEnvironments": true,
     "variations": [
-      {"value": "<variation 0 value as string>"},
-      {"value": "<variation 1 value as string>"}
+      {"value": "<variation 0 value as string>", "variationId": "<var_id from step 3, position 0>"},
+      {"value": "<variation 1 value as string>", "variationId": "<var_id from step 3, position 1>"}
     ],
     "description": "Experiment: <experiment name>"
   }
@@ -220,7 +224,7 @@ Use the literal version `new` to create a draft and add the rule in one call. Th
 echo '<payload-json>' | gb-call POST /api/v2/features/<flag-name>/revisions/new/rules -
 ```
 
-`variations[]` must have one entry per experiment variation, in the same order as step 3, with values serialized as strings. Capture the returned `version` for the draft revision.
+`variations[]` must have one entry per experiment variation, in the same order as step 3. Each entry needs **both** `value` (serialized as a string) and `variationId` (the string ID captured in step 3) — `variationId` is required by the v2 features validator and omitting it returns a `400`. Capture the returned `version` for the draft revision.
 
 Do **not** publish the revision here. Step 6's `/start` call auto-publishes the draft when it flips the experiment to running.
 
@@ -268,18 +272,13 @@ Do **not** silently retry `/start`, ignore the error, or discard and recreate th
 
 #### 6b. Checklist incomplete
 
-Confirm the failure by reading the canonical checklist state:
+The REST API does not expose a separate `start-checklist` endpoint — the failure body from `/start` is the canonical source. Parse it and surface the incomplete items verbatim:
 
-```bash
-gb-call GET /api/v1/experiments/<exp_id>/start-checklist
-```
-
-The response includes `allRequiredComplete` and `incompleteRequiredItems`. Halt and surface the incomplete items verbatim:
-
-> The pre-launch checklist isn't complete. Fix these items in the GrowthBook UI at `<host>/experiment/<exp_id>` and re-run me — I'll jump straight back to `/start`.
+> The pre-launch checklist isn't complete. The `/start` call returned:
 >
-> Items still incomplete:
-> `<bulleted list of incompleteRequiredItems>`
+> `<full error body>`
+>
+> Fix the listed items in the GrowthBook UI at `<host>/experiment/<exp_id>`, then re-run me — I'll jump straight back to `/start`.
 
 Only retry `/start` with `{"skipChecklist": true}` in the body if the user **explicitly** asks to bypass. Never default to bypassing; the checklist is intentional friction.
 
@@ -300,7 +299,7 @@ Print a summary:
 
 ## Guardrails
 
-- **One goal metric, full stop.** If the user names two, demote one to secondary. Five-metric experiments produce false positives via multiple comparisons.
+- **Ideally one goal metric, two max.** GrowthBook's decision framework treats goal metrics as plural by design and the power calculator supports up to five, but each additional goal dilutes power and complicates the ship/kill decision. Push back at three or more; demote the rest to secondary.
 - **At least one guardrail.** Push back if the user skips guardrails.
 - **`hashAttribute` and `assignmentQuery.identifierType` must match.** Mismatch is a real and recoverable error; surface the fix paths in step 2c.
 - **Metrics must live on the experiment's datasource.** Filter `/v1/metrics` and `/v1/fact-metrics` by `datasourceId` in step 2d.
@@ -322,8 +321,7 @@ Print a summary:
 - `GET /api/v2/features/<id>` — fetch the flag for the reuse compatibility checks
 - `POST /api/v2/features/<id>/revisions/new/rules` — atomic draft + add experiment-ref rule
 - `POST /api/v2/features/<id>/revisions/<version>/request-review` — used only in the 6a "request review" path
-- `POST /api/v1/experiments/<id>/start` — publish the draft revision and start the experiment
-- `GET /api/v1/experiments/<id>/start-checklist` — diagnose 6b failures
+- `POST /api/v1/experiments/<id>/start` — publish the draft revision and start the experiment. Body accepts `{"skipChecklist": true}` to bypass the pre-launch checklist when the user explicitly opts in. Failure responses carry the canonical reason in the body — there's no separate `start-checklist` GET to query.
 
 ## Handoffs
 

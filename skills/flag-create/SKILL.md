@@ -6,7 +6,7 @@ allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
 
 # flag-create
 
-Create a new feature flag in GrowthBook. The flag ships **disabled in every environment** — the user must enable it after creation. Feature keys are permanent; pick the name carefully.
+Create a new feature flag in GrowthBook. We always set `{enabled: false}` for every environment explicitly in the payload, so the flag ships disabled regardless of the org's default-state-for-new-environments setting — the user must enable it after creation. Feature keys are permanent; pick the name carefully.
 
 All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It expects `GB_API_KEY` and `GB_EMAIL` in env; see the plugin README if either is missing.
 
@@ -34,7 +34,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
    ```
    Build the map with each environment disabled.
 
-6. **Confirm naming.** v2 accepts only `[a-zA-Z0-9_-]` in feature IDs — kebab-case fits cleanly (`new-checkout-flow`, `dark-mode`, `pricing-experiment-2026-q2`) and keeps keys consistent across teams. Show the proposed key to the user before creating.
+6. **Confirm naming.** The v2 endpoint regex accepts `[a-zA-Z0-9_.:|-]` (the user-facing docs and error messages recommend the narrower `[a-zA-Z0-9_-]`). Default to **kebab-case** (`new-checkout-flow`, `dark-mode`, `pricing-experiment-2026-q2`) — it matches what the docs recommend, keeps keys consistent across teams, and avoids any future tightening of the regex. Show the proposed key to the user before creating.
 
 7. **Build the payload and create the flag.** Construct a JSON object:
    ```json
@@ -64,8 +64,8 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
 - **Feature keys are permanent.** GrowthBook does not let you rename a flag's `id` after creation. Confirm the proposed name with the user before calling the API.
 - **`owner` is required by the v2 API.** Read it from `GB_EMAIL` in env. If the variable is missing, ask the user for their email and tell them to export `GB_EMAIL` alongside `GB_API_KEY` to avoid prompting next time.
-- **ID character set narrowed in v2.** Only letters, digits, `-`, and `_` are accepted. The MCP era accepted `.`, `:`, `|` too — that's gone. Use kebab-case.
-- **Flags are created disabled.** The flag does nothing until the user enables it in at least one environment. Always say so in your reply — silent zero evaluation is a top GrowthBook footgun.
+- **ID character set: prefer kebab-case.** The v2 endpoint regex still accepts `[a-zA-Z0-9_.:|-]`, but the user-facing docs and error messages recommend `[a-zA-Z0-9_-]`. Don't propose IDs with `.`, `:`, or `|` — they may be tightened in a future version. Existing legacy keys with those characters can be left alone.
+- **Always set `{enabled: false}` explicitly per environment.** Don't rely on the org's default-state-for-new-environments setting — it's configurable and may default to enabled. Tell the user the flag is disabled everywhere; silent zero evaluation (or worse, accidentally-enabled evaluation) is a top GrowthBook footgun.
 - **`defaultValue` is always serialized as a string.** `"false"` for boolean off, `"0"` for numeric, JSON-encoded text for `json`. The API rejects non-string values.
 - **v2 environments map is just `{enabled: bool}` per env.** Rules are no longer nested under each environment — they're a top-level array on the flag (added later via `flag-targeting` or the revision endpoints). Do not include `rules: []` inside each env.
 - **Stop before creating if the user wants an experiment.** Hand off to `experiment-design`. Creating a flag without the corresponding experiment is a common confusion that produces orphaned flags.

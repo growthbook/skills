@@ -53,7 +53,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 - **Win rate definition:** `won / (won + lost + inconclusive)`. Don't invent another formula.
 - **Watch for SRM and guardrail issues in the history.** If many experiments show SRM failures, mention it and propose at least one idea aimed at improving experiment hygiene rather than another product test.
 - **Propose, do not create.** Never POST to `/api/v1/experiments`. The user's next step is `experiment-design` for the proposal they want to pursue.
-- **Avoid metric-fishing proposals.** Each idea has one primary metric. Don't propose tests with five metrics hoping one moves — that's the "too many primary metrics" footgun.
+- **Avoid metric-fishing proposals.** Each idea has one (occasionally two) goal metric. Don't propose tests with five metrics hoping one moves — that's the "too many goal metrics" footgun. GrowthBook's decision framework supports up to two goal metrics, but more dilutes power and confuses the ship/kill call.
 - **Rate limit awareness.** 50 experiments + 20 result fetches = ~21 calls; well under the 60 rpm cap. If the user wants more depth, ask before fanning out to >40 calls.
 
 ## Endpoints used

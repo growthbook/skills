@@ -19,14 +19,16 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
 2. **Define variations.** Default to two: control (current state) and treatment (the change). Three or more variations are valid but cost statistical power; ask the user whether they really need a third. Number variations from 0 (control) to N.
 
-3. **Pick the primary metric.** Exactly one. List available metrics:
+3. **Pick goal metrics (ideally one, two max).** List available metrics:
    ```bash
    gb-call GET /api/v1/metrics
    gb-call GET /api/v1/fact-metrics
    ```
-   Help the user choose based on what the hypothesis predicts will move. Note the metric type (proportion, mean, ratio, quantile) — affects sample-size math.
+   Help the user choose based on what the hypothesis predicts will move. Note the metric type (proportion, mean, ratio, quantile) — affects sample-size math. Push back hard on three or more goal metrics: the GrowthBook decision framework treats goal metrics as plural by design, but each additional goal dilutes power and complicates the ship/kill decision. Demote the rest to secondary.
 
-4. **Pick guardrails (1–3).** Metrics that *shouldn't* regress. Common examples: signup rate, revenue per user, page error rate, latency. If the user names zero guardrails, push back — every experiment needs at least one.
+   **Watch for activation-metric bias.** If a candidate goal/activation metric is downstream of variation differences (e.g., "completed signup" when the variations themselves affect signup completion), the activated cohort is biased — and the bias hides as a passing SRM check. If the user picks one, flag it and suggest analyzing the un-activated cohort as a sanity check.
+
+4. **Pick guardrails (1–3).** Metrics that *shouldn't* regress. Common examples: signup rate, revenue per user, page error rate, latency. If the user names zero guardrails, push back — every experiment needs at least one. Guardrails are excluded from multiple-comparison correction by design, so don't over-stack them.
 
 5. **Estimate sample size.** Need three inputs from the user:
    - Baseline rate (or mean) of the primary metric — fetch the metric's current value if available:
@@ -36,9 +38,11 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
    - Minimum detectable effect (MDE) the user cares about, in relative terms ("a 2% lift in conversion").
    - Daily traffic on the affected surface.
 
-   For a proportion metric: roughly `n ≈ 16 × p × (1 - p) / (p × MDE)^2` per variation for 80% power. For other metric types, point the user at GrowthBook's power calculator in the UI; don't fake precision the back-of-envelope can't give.
+   Use a back-of-envelope estimate to gut-check, then point the user at GrowthBook's in-app Power Calculator for the real number. A common rule-of-thumb GrowthBook documents is **≥ 200 conversions per variation** for proportion metrics; the formula `n ≈ 16 × p × (1 - p) / (p × MDE)^2` per variation lands in roughly the same place for 80% power. Don't quote three significant figures from either — they're estimates. Round up and surface the inputs.
 
-   Compute the expected experiment duration: `2 × n / daily_traffic`. If it's longer than 4 weeks, flag it — the test may be underpowered for practical use.
+   Compute the expected experiment duration: `2 × n / daily_traffic`. Flag the duration on both ends:
+   - **> 4 weeks** — likely underpowered for practical use; consider a larger MDE, a more sensitive metric, or higher-traffic surface.
+   - **< 1 week** — risks day-of-week and weekend effects skewing the result. Recommend at least one full weekly cycle.
 
 6. **Resolve project + datasource.** If the user mentions a specific project, get its ID:
    ```bash
@@ -73,10 +77,13 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
 ## Guardrails
 
-- **One primary metric, full stop.** Five-metric experiments produce false positives via multiple comparisons. Other metrics go in `guardrails` or `secondaryMetrics`, not `primary`.
-- **No guardrails = no design.** Push back if the user skips them. Even a single "don't crash the site" metric counts.
+- **Ideally one goal metric, two max.** GrowthBook's decision framework supports up to two goal metrics, and the power calculator allows up to five, but each additional goal dilutes power and complicates the ship/kill decision. Push back at three; refuse to design for five.
+- **No guardrails = no design.** Push back if the user skips them. Even a single "don't crash the site" metric counts. Multiple-comparison correction does **not** apply to guardrails (intentionally — a guardrail signal is meant to block shipping), so don't over-stack them either; 1–3 is the sweet spot.
 - **Hypothesis must be falsifiable.** "Users will engage more" isn't — engagement could mean five different things. Force a specific metric prediction.
-- **Sample-size math is approximate.** Don't quote three significant figures on a back-of-envelope estimate. Round up and surface the inputs you used so the user can check.
+- **Sample-size math is approximate.** Use it as a gut check; route the user to the in-app Power Calculator for the real number. Round up and surface the inputs you used so the user can check.
+- **Watch out for activation-metric bias.** Activation metrics downstream of variation differences silently bias results without tripping SRM. If the user picks one, name the risk explicitly.
+- **Suggest an A/A test for first-time experimenters.** If the org has no stopped experiments (check via `flag-discovery` or `experiment-brainstorm`), GrowthBook recommends an A/A test first to validate the implementation before running a real one.
+- **Day-of-week effects matter.** Push back on experiment durations under one full week. Weekend traffic and behavior differ from weekday traffic.
 - **Don't launch from this skill.** Final spec → user confirms → hand off to `experiment-launch`. Resist scope creep.
 - **Tracking-key naming is permanent.** Suggest kebab-case derived from the experiment name. The launch step will use this as `trackingKey`; it lands in event data and can't be cleanly changed later.
 
