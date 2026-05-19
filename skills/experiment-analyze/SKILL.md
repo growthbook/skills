@@ -8,7 +8,7 @@ allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *) Bash(sleep *)
 
 Trigger a fresh snapshot, poll for completion, then interpret the results. This skill is the heaviest in the catalog because it involves a polling loop and statistical interpretation — slow down and do each step deliberately.
 
-All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It expects `GB_API_KEY` in env. The skill also uses `sleep` between poll calls.
+All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It needs `GB_API_KEY` — set in your shell, or written to `~/.config/growthbook/.env` by `/growthbook:setup`. If unset or invalid, gb-call's error message points back at `/growthbook:setup`. The skill also uses `sleep` between poll calls.
 
 ## Workflow
 

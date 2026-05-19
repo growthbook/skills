@@ -4,9 +4,14 @@ Agent skills for [GrowthBook](https://growthbook.io) — feature flagging and ex
 
 The skills call the [GrowthBook REST API](https://docs.growthbook.io/api) directly through a small bundled helper. No MCP server required.
 
-## v0.3.0 — what's included
+## What's included
 
-Seven skills, all powered by the REST API:
+Eight skills, all powered by the REST API:
+
+### Setup
+| Skill | What it does |
+| --- | --- |
+| `gb-setup` | Walks you through API key, owner, and (self-hosted) API URL. Validates against the live API and writes `~/.config/growthbook/.env` with `chmod 600`. Re-run anytime to update. |
 
 ### Feature flags
 | Skill | What it does |
@@ -27,33 +32,35 @@ More skills are on the roadmap: `flag-targeting`, `flag-cleanup`, plus dedicated
 
 ## Install
 
-### 1. Set your GrowthBook env vars
-
-Skills authenticate via two env vars:
-
-```bash
-export GB_API_KEY=<your-key>         # required: PAT or Secret Key
-export GB_EMAIL=you@example.com      # required: used as the owner on created flags
-```
-
-Get a Personal Access Token from [`app.growthbook.io/settings/keys`](https://app.growthbook.io/settings/keys). `GB_EMAIL` is the address you use to sign in to GrowthBook — the v2 features API requires an `owner` on every created flag.
-
-For self-hosted, also export:
-
-```bash
-export GB_API_URL=https://api.your-host.com
-```
-
-Add the exports to your shell rc file so they persist.
-
-### 2. Install the plugin
+### 1. Install the plugin
 
 ```text
 /plugin marketplace add growthbook/skills
 /plugin install growthbook@growthbook-skills
 ```
 
-That's it. Restart Claude Code if the skills don't appear immediately. Node 18+ is required (it's what Claude Code already runs on, so this is usually satisfied).
+Restart Claude Code if the skills don't appear immediately. Node 18+ is required (it's what Claude Code already runs on, so this is usually satisfied).
+
+### 2. Configure credentials
+
+The quickest path is to run the setup skill:
+
+```text
+/growthbook:setup
+```
+
+It walks you through your API key, owner identifier, and (for self-hosted) your API URL — then validates against the live API and writes `~/.config/growthbook/.env` with `chmod 600`. Every other skill reads that file automatically.
+
+**Prefer shell-rc?** You can export the variables instead. The skills read environment variables first; the file is only consulted when an env var is unset.
+
+```bash
+export GB_API_KEY=<your-key>             # required: PAT or Secret Key
+export GB_EMAIL=you@example.com          # required for flag-create + experiment-launch
+                                         # (accepts an email OR a u_... userId)
+export GB_API_URL=https://api.your-host  # self-hosted only
+```
+
+Get a Personal Access Token from [`app.growthbook.io/settings/keys`](https://app.growthbook.io/settings/keys). The v2 features API requires an `owner` on every created flag — that's what `GB_EMAIL` provides.
 
 ### 3. Verify
 
@@ -61,7 +68,7 @@ That's it. Restart Claude Code if the skills don't appear immediately. Node 18+ 
 /growthbook:flag-discovery
 ```
 
-Should list your existing GrowthBook feature flags.
+Should list your existing GrowthBook feature flags. If anything's wrong with the config, the error points back at `/growthbook:setup`.
 
 ## How to invoke
 

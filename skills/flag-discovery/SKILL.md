@@ -8,7 +8,7 @@ allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
 
 Inventory and audit GrowthBook feature flags. Three jobs share this skill: listing the inventory, inspecting one flag's configuration, and finding stale flags that are candidates for cleanup.
 
-All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It expects `GB_API_KEY` in env.
+All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It needs `GB_API_KEY` — set in your shell, or written to `~/.config/growthbook/.env` by `/growthbook:setup`. If unset or invalid, gb-call's error message points back at `/growthbook:setup`.
 
 ## Workflow
 

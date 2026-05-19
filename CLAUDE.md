@@ -87,7 +87,8 @@ It expects `GB_API_KEY` [and `GB_EMAIL`, if writing flags] in env.
 ### Frontmatter rules
 
 - **`description` does routing, not labeling.** Include (a) concrete trigger phrases the user might say, and (b) explicit "For X, use Y skill" handoff hints. Look at any existing skill — the description is dense by design. It's what teaches Claude when *not* to fire.
-- **`allowed-tools` is the security model.** Pin to `Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)` and nothing else, unless the skill genuinely needs another binary. The only existing exception is `experiment-analyze`, which also allows `Bash(sleep *)` for its poll loop. New tool grants need a defensible reason.
+- **`allowed-tools` is the security model.** Pin to `Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)` and nothing else, unless the skill genuinely needs another binary. Two existing exceptions: `experiment-analyze` allows `Bash(sleep *)` for its poll loop; `gb-setup` allows four file-management commands to write `~/.config/growthbook/.env`. New tool grants need a defensible reason.
+- **When you do grant another binary, prefer literal full-command patterns over wildcards.** `Bash(chmod 600 ~/.config/growthbook/.env)` is a much narrower grant than `Bash(chmod *)` — the latter would allow `chmod 777 ~/.ssh/authorized_keys` if a prompt-injected response asked Claude to run it. Wildcards are only appropriate when the variable portion is genuinely unbounded (e.g. `Bash(sleep *)` where the arg is a duration). For everything else, write out each accepted invocation as its own allowlist entry.
 - **Use `${CLAUDE_PLUGIN_ROOT}` for paths**, never relative paths. It resolves to the plugin's install directory at runtime.
 
 ### Workflow conventions
@@ -113,6 +114,8 @@ The "Guardrails" section is where you document things the REST API will not enfo
 
 When a new API quirk bites you, add it here. Don't fix it by adding logic to `gb-call` — that helper stays dumb on purpose.
 
+**Refuse, don't sanitize.** When a skill or `gb-call` encounters a value that's *sometimes wrong in ways the system can't safely fix* — a `GB_API_KEY` containing CRLF that would inject headers, a `GB_API_URL` with a path component that would mis-route every request — reject with a clear error rather than silently coercing. Silent fix-ups train users to trust that the system "just works" when the value is sometimes meaningfully wrong; explicit refusals keep the human in the loop. Existing examples: `gb-call`'s control-character check on `GB_API_KEY`/`GB_API_URL`, `gb-setup`'s URL-shape validation. Use this pattern any time the safe response to a malformed value is "tell the user to fix their input."
+
 ## Read vs. write discipline
 
 Most skills are read-only or proposal-only. Only three currently write:
@@ -130,15 +133,37 @@ Read-only and proposal-only skills must *say so* in the intro and enforce it in 
 
 When in doubt, check the existing skill that hits the closest endpoint. Don't migrate v1 endpoints to v2 without confirming the v2 surface exists and the shape matches.
 
+## Secret handling
+
+Two surfaces hold credentials: the env var or `~/.config/growthbook/.env` (PATs go in), and the conversation transcript (the user pastes a PAT into chat when running `/growthbook:setup`). Neither can be retroactively redacted.
+
+Conventions every skill must follow:
+
+- **Never echo `GB_API_KEY` in user-facing output.** Mask to last 4 characters when surfacing identity. The skill's stdout/stderr lands in the user's transcript.
+- **Some GrowthBook API responses contain secrets** (SDK keys, webhook signing keys, etc.). The current eight skills don't hit those endpoints. A future skill that does must filter the response before surfacing — don't dump the raw body to the user.
+- **The `gb-setup` flow names the transcript-exposure risk explicitly** before the user pastes. Any future skill that prompts for a secret must do the same; users deserve to know before they paste.
+- **Recommend scoped, revocable PATs** over personal admin tokens. If a value is ever exposed, the only effective fix is rotation at `<host>/settings/keys`.
+
+## Env var contract
+
+Three vars drive every skill: `GB_API_KEY` (required), `GB_EMAIL` (required by write skills — accepts an email or a `u_...` userId), `GB_API_URL` (self-hosted only). `gb-call` reads them from `process.env` first, then falls back to `~/.config/growthbook/.env` if a var is unset. **Env always wins over the file** — useful for CI and one-off overrides.
+
+- Users get the file via `/growthbook:setup`, which validates against `GET /api/v1/projects` and writes with `chmod 600`.
+- Skills never read or write the file themselves — only `gb-call` and `gb-setup` touch it. If you find yourself adding env-var-reading logic to another skill, stop: the helper handles it.
+- New env vars should be rare. Adding one means updating `gb-setup`, `gb-call`, the README, and every skill preamble. Prefer richer existing-var semantics (e.g. `GB_EMAIL` accepting both emails and userIds) over a new variable.
+
 ## The helper (`scripts/gb-call`)
 
-Stays minimal on purpose. It is *one* Node file, *no* dependencies, uses built-in `fetch`. Reads `GB_API_KEY` + optional `GB_API_URL` from env, prints body to stdout on 2xx, status + body to stderr on non-2xx with exit 1.
+Stays minimal on purpose. It is *one* Node file, *no* dependencies, uses built-in `fetch`. Reads env vars (with `.env` fallback), prints body to stdout on 2xx, prints a routing-aware error to stderr on non-2xx with exit 1.
 
-Resist the urge to add features. Specifically, `scripts/README.md` lists what is **not in scope**:
+The error catalog is small but load-bearing — each branch in `explainHttpError` translates an HTTP failure into a one-line "here's what to do" hint (usually pointing at `/growthbook:setup`). When adding a new branch, keep two properties: (a) the synthesized message names a fix, not just a failure; (b) the raw response body is still printed underneath so power users can debug.
+
+Resist the urge to add features. `scripts/README.md` lists what is **not in scope**:
 
 - No retry / backoff (60 rpm rate limit; polling skills add their own delays)
 - No pagination helper (skills loop `offset`/`limit` themselves)
 - No response shape validation
+- No multi-profile support (one `~/.config/growthbook/.env`, no `GB_PROFILE`)
 
 Each of these gets added only when a real skill needs it. `experiment-analyze` will probably be the first caller that justifies retry/backoff.
 
@@ -164,4 +189,5 @@ GrowthBook is rate-limited at 60 rpm. Skills that fan out (brainstorm pulling 20
 - Read `flag-create` for the minimal write-skill pattern.
 - Read `flag-discovery` for the read-only / multi-path pattern.
 - Read `experiment-launch` for the full state-machine-with-failure-branches pattern.
+- Read `gb-setup` for the pattern when a skill needs file operations and broader `allowed-tools` — including how to narrow each tool grant to a literal command and how to surface secret-handling risks to the user before they paste.
 - Read `scripts/README.md` before extending the helper.
