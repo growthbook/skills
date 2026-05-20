@@ -43,8 +43,9 @@ Track progress with this checklist. Do not skip or reorder.
 - [ ] 3. Create the experiment in draft
 - [ ] 4. Create or reuse the feature flag
 - [ ] 5. Add the experiment-ref rule on a fresh draft revision
-- [ ] 6. POST /start; branch to 6a (approval) or 6b (checklist) on 400
-- [ ] 7. Report links and state
+- [ ] 6. Prompt user to QA the experiment and feature flag config
+- [ ] 7. POST /start; branch to 7a (approval) or 7b (checklist) on 400
+- [ ] 8. Report links and state
 ```
 
 ### 1. Pick a template (or skip)
@@ -96,6 +97,7 @@ gb-call GET '/api/v1/metrics?datasourceId=<DATASOURCE_ID>&limit=100'
 ```
 
 Help the user pick:
+
 - **Goal metric(s)** (`GOAL_METRIC_IDS`). Ideally one, two max — push back at three or more and demote the rest to secondary or guardrail.
 - **Secondary metrics** (`SECONDARY_METRIC_IDS`) — supporting context.
 - **Guardrail metrics** (`GUARDRAIL_METRIC_IDS`) — defensive. Push back if they name none; every experiment needs at least one. Guardrails are excluded from multiple-comparison correction by design.
@@ -113,8 +115,8 @@ Set `trackingKey` to the feature flag name so the SDK ties exposures to the flag
   "name": "<experiment name>",
   "hypothesis": "<hypothesis>",
   "variations": [
-    {"key": "0", "name": "Control"},
-    {"key": "1", "name": "Treatment"}
+    { "key": "0", "name": "Control" },
+    { "key": "1", "name": "Treatment" }
   ],
   "project": "<project id, omit if org-wide>"
 }
@@ -142,6 +144,7 @@ Set `trackingKey` to the feature flag name so the SDK ties exposures to the flag
 ```
 
 Notes:
+
 - `metrics` is the goal-metric array; with the one-goal rule it should always be length 1.
 - Omit `secondaryMetrics` / `guardrailMetrics` entirely if the user picked none. Don't send empty arrays.
 
@@ -152,12 +155,13 @@ echo '<payload-json>' | gb-call POST /api/v1/experiments -
 ```
 
 Capture from the response:
+
 - `experiment.id` — used in steps 5 and 6.
 - `experiment.variations[].variationId` — the **string ID** for each variation (e.g. `var_abc123`). You need these in step 5; they are required on the `experiment-ref` rule.
 
 ### 4. Create or reuse the feature flag
 
-**Try create first** unless the user said the flag already exists. The flag must default to the **control** value (variation 0's value), serialized as a string.
+**Try create first** unless the user said the flag already exists. The flag must default to the **control** value (variation 0's value), serialized as a string. Default all environments to off as well.
 
 ```json
 {
@@ -166,10 +170,6 @@ Capture from the response:
   "valueType": "<boolean|string|number|json>",
   "defaultValue": "<control value as string>",
   "description": "Drives experiment: <experiment name> (<exp_id>)",
-  "environments": {
-    "production": { "enabled": false },
-    "staging":    { "enabled": false }
-  },
   "project": "<project id, omit if org-wide>"
 }
 ```
@@ -189,20 +189,20 @@ gb-call GET /api/v2/features/<flag-name>
 
 Run these compatibility checks against the response. Each row says what to do on failure:
 
-| Check | Action on failure |
-| --- | --- |
-| `archived === false` | **Halt.** Tell the user to un-archive the flag in the UI before re-running. |
-| `valueType` matches the experiment's `<boolean\|string\|number\|json>` | **Halt.** Surface both values; do not silently change types. |
-| `project` matches the experiment's project (when set) | **Halt.** Reusing a flag from another project misroutes the experiment. |
-| `defaultValue` equals the control value (string-compared) | **Warn**, do not halt. The experiment rule supplies the variation values; the existing default applies only when the rule doesn't match. Ask "continue?" |
-| No existing rule with `type === "experiment-ref"` AND `experimentId === <exp_id>` already attached | If one exists → this experiment is already wired up. Skip step 5 and jump to step 6. |
-| No conflicting `experiment-ref` rule for another *running* experiment in the same environments | **Warn**, do not halt. Ask "this flag is currently driving experiment `<other_id>`; add another rule alongside it?" |
+| Check                                                                                              | Action on failure                                                                                                                                        |
+| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `archived === false`                                                                               | **Halt.** Tell the user to un-archive the flag in the UI before re-running.                                                                              |
+| `valueType` matches the experiment's `<boolean\|string\|number\|json>`                             | **Halt.** Surface both values; do not silently change types.                                                                                             |
+| `project` matches the experiment's project (when set)                                              | **Halt.** Reusing a flag from another project misroutes the experiment.                                                                                  |
+| `defaultValue` equals the control value (string-compared)                                          | **Warn**, do not halt. The experiment rule supplies the variation values; the existing default applies only when the rule doesn't match. Ask "continue?" |
+| No existing rule with `type === "experiment-ref"` AND `experimentId === <exp_id>` already attached | If one exists → this experiment is already wired up. Skip step 5 and jump to step 6.                                                                     |
+| No conflicting `experiment-ref` rule for another _running_ experiment in the same environments     | **Warn**, do not halt. Ask "this flag is currently driving experiment `<other_id>`; add another rule alongside it?"                                      |
 
 When all checks pass, capture the flag's identity and proceed to step 5. Do **not** mutate the existing flag here — all mutations go through the draft revision in step 5.
 
 ### 5. Add the experiment-ref rule on a fresh draft revision
 
-Use the literal version `new` to create a draft and add the rule in one call. The path segment `new` is a magic value that creates a draft branched off the live revision atomically.
+Use the literal version `new` to create a draft and add the rule in one call. The path segment `new` is a magic value that creates a draft branched off the live revision atomically. If the feature has multiple environments, prompt the user for which environments to go live in, and ensure this rule turns on the feature flag for those environments in addition to adding the rule to those environments.
 
 ```json
 {
@@ -212,8 +212,14 @@ Use the literal version `new` to create a draft and add the rule in one call. Th
     "enabled": true,
     "allEnvironments": true,
     "variations": [
-      {"value": "<variation 0 value as string>", "variationId": "<var_id from step 3, position 0>"},
-      {"value": "<variation 1 value as string>", "variationId": "<var_id from step 3, position 1>"}
+      {
+        "value": "<variation 0 value as string>",
+        "variationId": "<var_id from step 3, position 0>"
+      },
+      {
+        "value": "<variation 1 value as string>",
+        "variationId": "<var_id from step 3, position 1>"
+      }
     ],
     "description": "Experiment: <experiment name>"
   }
@@ -226,9 +232,22 @@ echo '<payload-json>' | gb-call POST /api/v2/features/<flag-name>/revisions/new/
 
 `variations[]` must have one entry per experiment variation, in the same order as step 3. Each entry needs **both** `value` (serialized as a string) and `variationId` (the string ID captured in step 3) — `variationId` is required by the v2 features validator and omitting it returns a `400`. Capture the returned `version` for the draft revision.
 
-Do **not** publish the revision here. Step 6's `/start` call auto-publishes the draft when it flips the experiment to running.
+Do **not** publish the revision here. Step 7's `/start` call auto-publishes the draft when it flips the experiment to running.
 
-### 6. Start the experiment
+### 6. Pause for QA before /start
+
+The draft revision and experiment are reversible up to this point; step 7's `/start` publishes the rule and flips the experiment to running.
+
+If the user seems to want you to also embed the feature flag in the codebase, now is a good time to do that.
+
+Stop and surface the UI links so the user can QA the flag default, the rule's variation values, and the experiment's targeting and metrics in the GrowthBook UI:
+
+- Experiment: `<host>/experiment/<exp_id>`
+- Feature: `<host>/features/<flag-name>` (draft revision `<version>`)
+
+Derive `<host>` from `GB_API_URL` by swapping `api.` → `app.`, as in step 8. Wait for the user's explicit go-ahead before proceeding to step 7.
+
+### 7. Start the experiment
 
 ```bash
 gb-call POST /api/v1/experiments/<exp_id>/start '{}'
@@ -241,11 +260,11 @@ The `/start` endpoint does two things server-side:
 
 Either can fail with a `400`. Branch:
 
-- Body starts with **"This revision requires approval before publishing"** → step 6a.
-- Body lists incomplete checklist items → step 6b.
-- `2xx` → step 7.
+- Body starts with **"This revision requires approval before publishing"** → step 7a.
+- Body lists incomplete checklist items → step 7b.
+- `2xx` → step 8.
 
-#### 6a. Approval required
+#### 7a. Approval required
 
 The experiment and flag exist; only the rule revision is stuck in draft. Halt and offer the user three concrete paths:
 
@@ -270,7 +289,7 @@ If the user picks **B** or **C**, stop with a one-line note. The existing draft 
 
 Do **not** silently retry `/start`, ignore the error, or discard and recreate the draft to work around the policy.
 
-#### 6b. Checklist incomplete
+#### 7b. Checklist incomplete
 
 The REST API does not expose a separate `start-checklist` endpoint — the failure body from `/start` is the canonical source. Parse it and surface the incomplete items verbatim:
 
@@ -282,7 +301,7 @@ The REST API does not expose a separate `start-checklist` endpoint — the failu
 
 Only retry `/start` with `{"skipChecklist": true}` in the body if the user **explicitly** asks to bypass. Never default to bypassing; the checklist is intentional friction.
 
-### 7. Report
+### 8. Report
 
 Print a summary:
 
@@ -306,8 +325,7 @@ Print a summary:
 - **Do NOT mix `templateId` with `datasourceId`/`assignmentQueryId`.** The template path supplies those; the no-template path supplies them explicitly. Mixing yields a `400`.
 - **Flag default = control value.** Variation values for flag-linked experiments are strings on the rule — `"false"`/`"true"` for booleans, `"42"` for numbers, JSON-encoded text for `json`.
 - **Reuse with care.** Always run the step 4 compatibility checks before reusing an existing flag. Silently attaching to a flag with the wrong `valueType`, wrong `project`, or a conflicting rule will break the experiment or step on a teammate's in-flight test.
-- **No manual revision publish.** The step 5 draft is published by `/start` in step 6. Do not call publish endpoints separately.
-- **Approval failures: do not self-approve.** The API blocks approval on drafts you created. Walk the user through 6a instead.
+- **No manual revision publish.** The step 5 draft is published by `/start` in step 7. Do not call publish endpoints separately - **Approval failures: do not self-approve.** The API blocks approval on drafts you created. Walk the user through 6a instead.
 - **Checklist failures: do not bypass by default.** Only set `skipChecklist: true` after the user explicitly opts in.
 
 ## Endpoints used

@@ -86,9 +86,14 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
    echo '<payload-json>' | gb-call POST /api/v1/experiments/<experiment-id>/stop -
    ```
 
-7. **State what happens next.** Tell the user:
+7. **State what happens next, and link to the experiment.** Tell the user:
    - The experiment is now stopped; no more traffic accumulates against the experiment.
    - If a winner was declared, the variation ID that "won."
+   - **Direct UI link** so they can verify the stopped state, the recorded `analysis`, and the rollout status:
+     ```
+     <host>/experiment/<experiment-id>
+     ```
+     Derive `<host>` from `GB_API_URL` by swapping `api.` → `app.` (matches `experiment-launch`'s convention; on the default cloud host this produces `https://app.growthbook.io`).
    - **If `enableTemporaryRollout: true` was sent**, eligible traffic is now routed to the released variation through the experiment's existing flag rule. The user can toggle this off later by:
      ```bash
      echo '{"enableTemporaryRollout": false}' \
