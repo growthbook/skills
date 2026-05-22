@@ -28,7 +28,7 @@ Eight skills, all powered by the REST API:
 | `experiment-analyze` | Trigger a fresh snapshot, poll until ready, then interpret results (SRM check, lifts, CIs, guardrails). |
 | `experiment-stop` | Stop a running experiment, optionally declaring a winning variation. |
 
-More skills are on the roadmap: `flag-targeting`, `flag-cleanup`, plus dedicated metric and SDK skills.
+More skills are on the roadmap — see [`notes/roadmap.md`](notes/roadmap.md) for scope, priority, and likely endpoints. The next likely additions are `flag-targeting` (edit/remove rules on an existing flag), `flag-cleanup` (delete stale flags and inline values), and `metric-create` (define new metrics from the agent).
 
 ## Install
 

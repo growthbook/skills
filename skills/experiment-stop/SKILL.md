@@ -36,7 +36,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
 3. **Decide on temporary rollout.** If the user has a winner and wants to ship now, offer the temporary-rollout path:
 
-   > "Want me to also enable a temporary rollout? That keeps this experiment in the SDK payload and forces 100% of eligible traffic to `<winnerVariationId>`. It's the cleanest 'ship the winner' option — the linked feature flag's rule stays in place but routes everyone to the winner. You can toggle it off later with `modify-temporary-rollout` or by cleaning the rule up via `flag-targeting`."
+   > "Want me to also enable a temporary rollout? That keeps this experiment in the SDK payload and forces 100% of eligible traffic to `<winnerVariationId>`. It's the cleanest 'ship the winner' option — the linked feature flag's rule stays in place but routes everyone to the winner. You can toggle it off later with `modify-temporary-rollout` or by editing the rule on the linked flag in the GrowthBook UI at `<host>/features/<flag-id>`."
 
    If yes, set `enableTemporaryRollout: true` and `releasedVariationId: <winner ID>` in the payload. If no, the experiment stops but you leave the flag alone — surface that the user will need to clean up the `experiment-ref` rule manually.
 
@@ -99,8 +99,8 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
      echo '{"enableTemporaryRollout": false}' \
        | gb-call POST /api/v1/experiments/<experiment-id>/modify-temporary-rollout -
      ```
-     and then clean up the `experiment-ref` rule on the linked flag via `flag-targeting`.
-   - **If no rollout was enabled**, the linked feature's `experiment-ref` rule is still in place — the user should either (a) update the flag's default value to match the winning variation and remove the rule, or (b) use `flag-targeting` to clean it up. Surface this every time, because the flag keeps routing to a stopped experiment until cleaned up.
+     and then clean up the `experiment-ref` rule on the linked flag in the GrowthBook UI at `<host>/features/<flag-id>` (no rule-editing skill yet).
+   - **If no rollout was enabled**, the linked feature's `experiment-ref` rule is still in place — the user should either (a) update the flag's default value to match the winning variation and remove the rule, or (b) edit the rule on the linked flag in the GrowthBook UI at `<host>/features/<flag-id>`. Surface this every time, because the flag keeps routing to a stopped experiment until cleaned up.
 
 ## Guardrails
 
@@ -124,5 +124,5 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 ## Handoffs
 
 - `experiment-analyze` — run first if the user wants to interpret results before deciding.
-- `flag-targeting` — after stopping with a declared winner (with or without temporary rollout), the linked flag's `experiment-ref` rule needs to be updated or removed.
+- Manual flag cleanup — after stopping with a declared winner (with or without temporary rollout), the linked flag's `experiment-ref` rule needs to be updated or removed in the GrowthBook UI at `<host>/features/<flag-id>`. No skill for that yet.
 - `experiment-design` and `experiment-launch` — for the next test if this one informed a follow-up.

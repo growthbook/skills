@@ -346,4 +346,4 @@ Print a summary:
 - `experiment-design` — if no spec exists, route back here first.
 - `experiment-analyze` — after the experiment is running and traffic accumulates.
 - `experiment-stop` — when results are settled.
-- `metric-create` — if a metric you need doesn't exist yet.
+- Manual metric creation — if a metric you need doesn't exist yet, the user must create it in the GrowthBook UI at `<host>/metrics` (or `<host>/fact-tables` for fact metrics) before re-running this skill. No skill for that yet.

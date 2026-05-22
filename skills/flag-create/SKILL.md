@@ -12,7 +12,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
 ## Workflow
 
-1. **Confirm intent.** Restate what the flag will gate in one sentence. Stop if the user actually wants an experiment (route to `experiment-design`) or a rule on an existing flag (route to `flag-targeting`).
+1. **Confirm intent.** Restate what the flag will gate in one sentence. Stop if the user actually wants an experiment (route to `experiment-design`) or a rule on an existing flag (no skill for that yet — direct them to edit the flag in the GrowthBook UI at `<host>/features/<flag-id>`; derive `<host>` from `GB_API_URL` by swapping `api.` → `app.`).
 
 2. **Check the key isn't taken.**
    ```bash
@@ -57,7 +57,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
    ```
 
 8. **State what happens next.** Tell the user explicitly: the flag is **disabled in all environments** and has **no rules** yet. Offer two follow-ups:
-   - To turn it on for everyone in an environment, use `flag-targeting`.
+   - To turn it on for everyone in an environment or attach a targeting rule, edit the flag in the GrowthBook UI at `<host>/features/<flag-id>` (no skill for rule editing yet; derive `<host>` from `GB_API_URL` by swapping `api.` → `app.`).
    - To use this flag as the variation switch in an A/B test, use `experiment-design` with the flag's ID.
 
 ## Guardrails
@@ -67,7 +67,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 - **ID character set: prefer kebab-case.** The v2 endpoint regex still accepts `[a-zA-Z0-9_.:|-]`, but the user-facing docs and error messages recommend `[a-zA-Z0-9_-]`. Don't propose IDs with `.`, `:`, or `|` — they may be tightened in a future version. Existing legacy keys with those characters can be left alone.
 - **Always set `{enabled: false}` explicitly per environment.** Don't rely on the org's default-state-for-new-environments setting — it's configurable and may default to enabled. Tell the user the flag is disabled everywhere; silent zero evaluation (or worse, accidentally-enabled evaluation) is a top GrowthBook footgun.
 - **`defaultValue` is always serialized as a string.** `"false"` for boolean off, `"0"` for numeric, JSON-encoded text for `json`. The API rejects non-string values.
-- **v2 environments map is just `{enabled: bool}` per env.** Rules are no longer nested under each environment — they're a top-level array on the flag (added later via `flag-targeting` or the revision endpoints). Do not include `rules: []` inside each env.
+- **v2 environments map is just `{enabled: bool}` per env.** Rules are no longer nested under each environment — they're a top-level array on the flag, added later via the v2 revision endpoints (no dedicated skill for that yet; the GrowthBook UI is the user-facing path). Do not include `rules: []` inside each env.
 - **Stop before creating if the user wants an experiment.** Hand off to `experiment-design`. Creating a flag without the corresponding experiment is a common confusion that produces orphaned flags.
 - **Ask, do not guess.** If `valueType`, `defaultValue`, or project are ambiguous, ask. The flag is permanent.
 
