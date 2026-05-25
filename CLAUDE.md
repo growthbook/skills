@@ -114,6 +114,10 @@ The "Guardrails" section is where you document things the REST API will not enfo
 - The v2 rule-edit handler **rejects** explicit `type` changes but **auto-flips** `force` ↔ `rollout` based on effective coverage (flag-targeting)
 - `experimentId` and `variations` on an `experiment-ref` rule are API-allowed but skill-gated (warn-and-confirm) because they cause silent drift between the flag rule and the experiment (flag-targeting)
 - A `409` on revision publish means the draft's base is stale; don't auto-rebase, halt and let the user resolve (flag-targeting)
+- `POST /v2/features/<id>` with `{archived: true|false}` is not a metadata patch — it triggers `createAndPublishRevision` server-side, so it has the same approval-required (403) and merge-conflict (409) failure modes as any v2 publish (flag-cleanup)
+- Per-token `bypassApprovalChecks` authorizes archive but **not** delete; only the org-wide `restApiBypassesReviews` setting authorizes destructive actions. Explicit comment in `deleteFeature.ts`: "review-workflow bypass, not destructive-action override" (flag-cleanup)
+- Feature delete unlinks experiments (clears `experiment.linkedFeatures` for any affected experiment) but doesn't delete the experiments themselves — their tracking keys are left pointing at a non-existent flag. Surface this so the user isn't surprised by stale `trackingKey` values in experiment history (flag-cleanup)
+- Feature delete does **not** explicitly clean up holdout associations. A holdout's `linkedExperiments` may have stale references after a flag with a holdout is deleted. Warn the user when `feature.holdout` was present (flag-cleanup)
 
 When a new API quirk bites you, add it here. Don't fix it by adding logic to `gb-call` — that helper stays dumb on purpose.
 
@@ -194,4 +198,5 @@ GrowthBook is rate-limited at 60 rpm. Skills that fan out (brainstorm pulling 20
 - Read `experiment-launch` for the full state-machine-with-failure-branches pattern.
 - Read `gb-setup` for the pattern when a skill needs file operations and broader `allowed-tools` — including how to narrow each tool grant to a literal command and how to surface secret-handling risks to the user before they paste.
 - Read `flag-targeting` for two patterns it pioneers: (a) the **warn-and-confirm** guardrail layer — for changes the server allows but the user shouldn't make lightly, like editing `experimentId` on an experiment-ref rule; and (b) the **merge-conflict (409) branch** — halt with the conflict body, don't auto-rebase, let the user resolve in the UI.
+- Read `flag-cleanup` for three patterns it pioneers: (a) the **agent-mediated code-cleanup** flow — skill workflow coordinates code edits via Read/Edit on the user's working tree, batched by file, without expanding `allowed-tools` beyond gb-call; (b) the **archive-then-verify-then-delete safety gate** — a product-safety pause between two API calls (not the workflow-safety of approval), because permanent deletion is a one-way door; (c) the **bypass-asymmetry** awareness — per-token `bypassApprovalChecks` authorizes some destructive paths but not others, and the skill needs to surface this when offering bypass options.
 - Read `scripts/README.md` before extending the helper.

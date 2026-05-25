@@ -1,8 +1,8 @@
 # Roadmap — skills not yet built
 
-Status snapshot as of 2026-05-25. The plugin ships **nine** skills (`gb-setup`, `flag-create`, `flag-discovery`, `flag-targeting`, `experiment-brainstorm`, `experiment-design`, `experiment-launch`, `experiment-analyze`, `experiment-stop`). This doc captures every skill that has been *referenced* by an existing skill but doesn't exist yet, with enough detail to scope and prioritize when we pick them up.
+Status snapshot as of 2026-05-25. The plugin ships **ten** skills (`gb-setup`, `flag-create`, `flag-discovery`, `flag-targeting`, `flag-cleanup`, `experiment-brainstorm`, `experiment-design`, `experiment-launch`, `experiment-analyze`, `experiment-stop`). This doc captures every skill that has been *referenced* by an existing skill but doesn't exist yet, with enough detail to scope and prioritize when we pick them up.
 
-After the 2026-05-25 implementation of `flag-targeting`, the post-`experiment-stop` cleanup workflow and the post-`flag-create` "turn it on" workflow are agent-driven. The remaining Phase 2 work is `flag-cleanup` (delete + inline) and `metric-create`.
+The flag-lifecycle skills are now complete (create / discover / targeting / cleanup). The remaining Phase 2 work is `metric-create`.
 
 ## Phase 2 — lifecycle gaps with the highest workflow impact
 
@@ -14,23 +14,9 @@ Add/edit/remove targeting rules on an existing flag, plus env-level kill switch.
 
 ---
 
-### `flag-cleanup`
+### `flag-cleanup` — **SHIPPED 2026-05-25**
 
-**What it does:** remove a stale flag and inline its value in the codebase. Takes a flag ID, surfaces what value it would resolve to today, and walks the user through (a) confirming the value is right for all environments, (b) replacing call sites in the codebase, and (c) deleting the flag.
-
-**Why it's worth building:** `flag-discovery` Path C audits for stale flags but explicitly refuses to delete anything ("audits; cleanup is a separate skill"). The follow-through has no agent path today.
-
-**Likely endpoints:**
-- `GET /api/v2/features/<id>` — fetch current state and resolve effective default
-- `GET /api/v2/stale-features?ids=<id>` — confirm staleness before deleting
-- `DELETE /api/v2/features/<id>` — actually delete (or whatever the API offers; may need to verify the exact path)
-- Codebase search via the agent's normal tooling — not a REST call
-
-**Composition with existing skills:**
-- Called from `flag-discovery` Path C after the user opts in
-- Called from `experiment-analyze` after a stopped experiment when no temporary rollout was enabled and the user is ready to retire the flag
-
-**Estimated effort:** 4-6 hours. The API side is small but the "find and inline call sites in the codebase" part needs careful guardrails (no auto-delete of code; surface call sites for human review).
+Archive or delete a stale flag, walking the user through inlining `defaultValue` at call sites first. Two-step safety gate (archive → verify → delete). See `skills/flag-cleanup/SKILL.md`. The plan that produced this skill is preserved in `notes/flag-cleanup-plan.md` and `notes/flag-cleanup-plan-review.md`.
 
 ---
 
@@ -83,14 +69,11 @@ Add/edit/remove targeting rules on an existing flag, plus env-level kill switch.
 
 The reword pass on 2026-05-22 made the existing skills honest about the gaps — every "use `flag-targeting`" was replaced with "do this in the GrowthBook UI at `<host>/features/<id>`." So the workflow still completes; the user just has to switch contexts.
 
-The cost of not building the remaining Phase 2 skills:
-- **`flag-cleanup`:** stale flags accumulate without an agent-driven removal path.
-- **`metric-create`:** new metrics require the UI before an experiment can be designed against them. Lower friction in practice since most orgs reuse a stable set of metrics.
+The cost of not building the remaining Phase 2 skill:
+- **`metric-create`:** new metrics require the UI before an experiment can be designed against them. Lower friction in practice since most orgs reuse a stable set of metrics — but the experiment-design and experiment-launch handoffs to "create the metric in the UI" stay in place until this ships.
 
 Phase 3 represents wider scope (statistics knowledge, SDK code-gen) that's genuinely different from the lifecycle skills we have. Worth treating as separate projects rather than a continuation of the existing catalog.
 
 ## Suggested next move
 
-Build `flag-cleanup` next. It's the natural follow-on to `flag-discovery`'s audit (which today refuses to delete anything), and it composes with `experiment-analyze`'s "stopped → retire the flag" recommendation. The scope is well-defined; the implementation complexity is mostly on the "find and inline call sites in the codebase" side rather than the REST surface.
-
-`metric-create` is third — useful but lower-friction in practice, since most orgs reuse a stable set of metrics rather than creating new ones per experiment.
+Build `metric-create` next — it's the only remaining Phase 2 skill, and it closes the design-to-launch handoff currently routed to the UI. Scope is straightforward on the REST side; the heavier work is the SQL/event mapping and threshold UX for new metrics. Alternatively, defer Phase 2 entirely and weigh Phase 3 options (statistics, SDK) against current pain points.
