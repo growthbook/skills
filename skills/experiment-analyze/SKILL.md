@@ -151,7 +151,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
    - `running` and conclusive → suggest `experiment-stop` with the chosen variation.
    - `running` and inconclusive → suggest waiting or extending.
-   - `stopped` → point at flag cleanup. No skill for editing flag rules yet; direct the user to the GrowthBook UI at `<host>/features/<flag-id>` to update or remove the `experiment-ref` rule.
+   - `stopped` → point at flag cleanup via `flag-targeting` to update or remove the `experiment-ref` rule on the linked flag.
 
 ## Guardrails
 
@@ -178,5 +178,5 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 ## Handoffs
 
 - `experiment-stop` — when the user is ready to act on a conclusive result.
-- Manual flag cleanup — after stopping with a winner, the linked flag (if any) needs its rule updated or removed in the GrowthBook UI at `<host>/features/<flag-id>`. No skill for that yet.
+- `flag-targeting` — after stopping with a winner, the linked flag (if any) needs its `experiment-ref` rule updated or removed.
 - `experiment-statistics` (when shipped) — for deeper questions about CUPED, sequential testing, multiple comparisons, dimensional analysis.

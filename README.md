@@ -6,7 +6,7 @@ The skills call the [GrowthBook REST API](https://docs.growthbook.io/api) direct
 
 ## What's included
 
-Eight skills, all powered by the REST API:
+Nine skills, all powered by the REST API:
 
 ### Setup
 | Skill | What it does |
@@ -18,6 +18,7 @@ Eight skills, all powered by the REST API:
 | --- | --- |
 | `flag-create` | Create a new feature flag, with collision check, valueType picking, and the "flag is created disabled" reminder. |
 | `flag-discovery` | List flags, inspect one, or audit for stale flags. Reads only. |
+| `flag-targeting` | Add, edit, or remove targeting rules on an existing flag — including percentage rollouts, forced-value rules, and the env-level kill switch. Handles approval-required and merge-conflict failure paths. |
 
 ### Experimentation
 | Skill | What it does |
@@ -28,7 +29,7 @@ Eight skills, all powered by the REST API:
 | `experiment-analyze` | Trigger a fresh snapshot, poll until ready, then interpret results (SRM check, lifts, CIs, guardrails). |
 | `experiment-stop` | Stop a running experiment, optionally declaring a winning variation. |
 
-More skills are on the roadmap — see [`notes/roadmap.md`](notes/roadmap.md) for scope, priority, and likely endpoints. The next likely additions are `flag-targeting` (edit/remove rules on an existing flag), `flag-cleanup` (delete stale flags and inline values), and `metric-create` (define new metrics from the agent).
+More skills are on the roadmap — see [`notes/roadmap.md`](notes/roadmap.md) for scope, priority, and likely endpoints. The next likely additions are `flag-cleanup` (delete stale flags and inline values) and `metric-create` (define new metrics from the agent).
 
 ## Install
 
@@ -81,7 +82,7 @@ Each skill's description names its trigger phrases and routes to sibling skills 
 
 ## What these skills do not do
 
-- **No targeting-rule edits or flag cleanup yet.** `flag-targeting` (add/edit/remove a rule on an existing flag) and `flag-cleanup` (remove a stale flag and inline its value) are on the roadmap.
+- **No flag cleanup yet.** `flag-cleanup` (remove a stale flag and inline its value at call sites) is on the roadmap. Until then, audit with `flag-discovery` and delete via the GrowthBook UI.
 - **No metric or datasource creation.** A `metric-create` skill is planned; until then, create metrics and datasources in the GrowthBook UI and reference them by ID.
 - **No SDK code generation.** A dedicated `sdk-install` / `sdk-developer` skill is on the roadmap; for now, follow GrowthBook's SDK docs and use these skills to manage flags and experiments around your SDK integration.
 - **No multi-armed bandit support.** The experiment skills target standard A/B tests; bandits use the same REST endpoints but report differently. Manage bandits in the UI for now — the skills halt rather than mis-interpret them.
@@ -111,6 +112,7 @@ skills/
   gb-setup/SKILL.md                # one-time onboarding (writes ~/.config/growthbook/.env)
   flag-create/SKILL.md
   flag-discovery/SKILL.md
+  flag-targeting/SKILL.md
   experiment-brainstorm/SKILL.md
   experiment-design/SKILL.md
   experiment-launch/SKILL.md

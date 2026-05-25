@@ -111,6 +111,9 @@ The "Guardrails" section is where you document things the REST API will not enfo
 - Multiple-comparison correction is frequentist-only and excludes guardrails (experiment-analyze)
 - Bayesian (default engine) reports Chance to Win + Credible Intervals; frequentist reports CIs. Don't manufacture a p-value (experiment-analyze)
 - `/start` failure body is the canonical source for "what's wrong" — there is no `start-checklist` GET (experiment-launch)
+- The v2 rule-edit handler **rejects** explicit `type` changes but **auto-flips** `force` ↔ `rollout` based on effective coverage (flag-targeting)
+- `experimentId` and `variations` on an `experiment-ref` rule are API-allowed but skill-gated (warn-and-confirm) because they cause silent drift between the flag rule and the experiment (flag-targeting)
+- A `409` on revision publish means the draft's base is stale; don't auto-rebase, halt and let the user resolve (flag-targeting)
 
 When a new API quirk bites you, add it here. Don't fix it by adding logic to `gb-call` — that helper stays dumb on purpose.
 
@@ -190,4 +193,5 @@ GrowthBook is rate-limited at 60 rpm. Skills that fan out (brainstorm pulling 20
 - Read `flag-discovery` for the read-only / multi-path pattern.
 - Read `experiment-launch` for the full state-machine-with-failure-branches pattern.
 - Read `gb-setup` for the pattern when a skill needs file operations and broader `allowed-tools` — including how to narrow each tool grant to a literal command and how to surface secret-handling risks to the user before they paste.
+- Read `flag-targeting` for two patterns it pioneers: (a) the **warn-and-confirm** guardrail layer — for changes the server allows but the user shouldn't make lightly, like editing `experimentId` on an experiment-ref rule; and (b) the **merge-conflict (409) branch** — halt with the conflict body, don't auto-rebase, let the user resolve in the UI.
 - Read `scripts/README.md` before extending the helper.
