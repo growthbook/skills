@@ -12,10 +12,10 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
 ## Workflow
 
-1. **Frame the hypothesis.** Ask the user for an if/then/because:
+1. **Frame the hypothesis.** Falsifiable, if/then/because format:
    > If we change X, then Y will improve, because Z.
 
-   Reject vague hypotheses. "We think users will like it" is not a hypothesis. "If we move the CTA above the fold, then click-through will increase, because users decide whether to engage before they scroll" is.
+   Push for specificity if the hypothesis is vague. "We think users will like it" doesn't say which metric — engagement could mean five different things. "If we move the CTA above the fold, then click-through will increase, because users decide whether to engage before they scroll" gives the prediction something concrete to land against.
 
 2. **Define variations.** Default to two: control (current state) and treatment (the change). Three or more variations are valid but cost statistical power; ask the user whether they really need a third. Number variations from 0 (control) to N.
 
@@ -24,11 +24,11 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
    gb-call GET /api/v1/metrics
    gb-call GET /api/v1/fact-metrics
    ```
-   Help the user choose based on what the hypothesis predicts will move. Note the metric type (proportion, mean, ratio, quantile) — affects sample-size math. Push back hard on three or more goal metrics: the GrowthBook decision framework treats goal metrics as plural by design, but each additional goal dilutes power and complicates the ship/kill decision. Demote the rest to secondary.
+   Help the user choose based on what the hypothesis predicts will move. Note the metric type (proportion, mean, ratio, quantile) — affects sample-size math. Push back at three or more goal metrics and demote the rest to secondary or guardrail: the GrowthBook decision framework treats goal metrics as plural by design, but each additional goal dilutes power and complicates the ship/kill decision.
 
    **Watch for activation-metric bias.** If a candidate goal/activation metric is downstream of variation differences (e.g., "completed signup" when the variations themselves affect signup completion), the activated cohort is biased — and the bias hides as a passing SRM check. If the user picks one, flag it and suggest analyzing the un-activated cohort as a sanity check.
 
-4. **Pick guardrails (1–3).** Metrics that *shouldn't* regress. Common examples: signup rate, revenue per user, page error rate, latency. If the user names zero guardrails, push back — every experiment needs at least one. Guardrails are excluded from multiple-comparison correction by design, so don't over-stack them.
+4. **Pick guardrails (1–3).** Metrics that *shouldn't* regress. Common examples: signup rate, revenue per user, page error rate, latency. Push back if the user skips guardrails; every experiment needs at least one. Guardrails are excluded from multiple-comparison correction by design, so don't over-stack them.
 
 5. **Estimate sample size.** Need three inputs from the user:
    - Baseline rate (or mean) of the primary metric — fetch the metric's current value if available:
@@ -77,9 +77,9 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
 ## Guardrails
 
-- **Ideally one goal metric, two max.** GrowthBook's decision framework supports up to two goal metrics, and the power calculator allows up to five, but each additional goal dilutes power and complicates the ship/kill decision. Push back at three; refuse to design for five.
-- **No guardrails = no design.** Push back if the user skips them. Even a single "don't crash the site" metric counts. Multiple-comparison correction does **not** apply to guardrails (intentionally — a guardrail signal is meant to block shipping), so don't over-stack them either; 1–3 is the sweet spot.
-- **Hypothesis must be falsifiable.** "Users will engage more" isn't — engagement could mean five different things. Force a specific metric prediction.
+- **Ideally one goal metric, two max.** GrowthBook's decision framework treats goal metrics as plural by design and the power calculator supports up to five, but each additional goal dilutes power and complicates the ship/kill decision. Push back at three or more; demote the rest to secondary.
+- **At least one guardrail.** Push back if the user skips guardrails. Multiple-comparison correction does **not** apply to guardrails (intentionally — a guardrail signal is meant to block shipping), so don't over-stack them either; 1–3 is the sweet spot.
+- **Falsifiable hypothesis, if/then/because format.** Push the user to make the prediction concrete enough to interpret results against. "Users will engage more" doesn't say which metric.
 - **Sample-size math is approximate.** Use it as a gut check; route the user to the in-app Power Calculator for the real number. Round up and surface the inputs you used so the user can check.
 - **Watch out for activation-metric bias.** Activation metrics downstream of variation differences silently bias results without tripping SRM. If the user picks one, name the risk explicitly.
 - **Suggest an A/A test for first-time experimenters.** If the org has no stopped experiments (check via `flag-discovery` or `experiment-brainstorm`), GrowthBook recommends an A/A test first to validate the implementation before running a real one.

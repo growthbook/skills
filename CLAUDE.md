@@ -123,6 +123,12 @@ When a new API quirk bites you, add it here. Don't fix it by adding logic to `gb
 
 **Refuse, don't sanitize.** When a skill or `gb-call` encounters a value that's *sometimes wrong in ways the system can't safely fix* — a `GB_API_KEY` containing CRLF that would inject headers, a `GB_API_URL` with a path component that would mis-route every request — reject with a clear error rather than silently coercing. Silent fix-ups train users to trust that the system "just works" when the value is sometimes meaningfully wrong; explicit refusals keep the human in the loop. Existing examples: `gb-call`'s control-character check on `GB_API_KEY`/`GB_API_URL`, `gb-setup`'s URL-shape validation. Use this pattern any time the safe response to a malformed value is "tell the user to fix their input."
 
+## Experiment skills: voice authority
+
+`skills/experiment-launch/SKILL.md` was authored directly by GrowthBook's head of data science. **When `experiment-design` (or any other experiment skill) differs from `experiment-launch` on statistical framing, hypothesis discipline, goal-metric counts, guardrail requirements, or other methodology, align the other skill to `experiment-launch` — not the other way around.** The 2026-05-26 overreach review (`notes/skills-overreach-review.md`) caught one drift cycle; future edits should treat `experiment-launch` as the canonical voice on these topics.
+
+If a change to `experiment-launch` itself seems warranted, that's a conversation to have with the head of data science before applying — don't unilaterally edit. The same caveat applies to anything in `experiment-launch`'s Guardrails or its statistical commentary in the workflow.
+
 ## Read vs. write discipline
 
 Most skills are read-only or proposal-only. Only three currently write:

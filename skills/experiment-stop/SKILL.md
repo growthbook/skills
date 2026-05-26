@@ -106,7 +106,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
 - **`winnerVariationId` is a variation ID *string* (e.g. `var_abc123`), not an integer index, not a name, not the variation's `key`.** Get this wrong and the request 400s or the wrong variation is recorded as the winner.
 - **The endpoint is `POST /api/v1/experiments/<id>/stop`, not `POST /api/v1/experiments/<id>`.** The body shape is flat — there is no `resultSummary` wrapper. The generic update endpoint exists but takes different fields; use the dedicated stop endpoint here.
-- **Never declare a winner the user didn't pick.** Even if the results look obvious, force the user to choose the variation ID. Surface results, but don't pre-fill.
+- **Never declare a winner the user didn't pick.** Even if the results look obvious, force the user to choose the variation ID. Surface results, but don't pre-fill. *Skill convention, not GrowthBook policy: the API accepts any variation ID as `winnerVariationId`; the safety is enforced here, not server-side.*
 - **Don't stop drafts.** A `draft` experiment isn't running — what the user wants there is `DELETE /api/v1/experiments/<id>` (separate skill, not covered here). Surface the confusion if they ask to stop a draft.
 - **Don't stop already-stopped experiments.** The API may accept the call but it's effectively a no-op; tell the user it's already done. To change the results metadata on an already-stopped experiment, post again with the new `results` / `winnerVariationId` / `analysis`.
 - **Bandits are out of scope.** `type === "multi-armed-bandit"` experiments need different handling — halt and tell the user.
