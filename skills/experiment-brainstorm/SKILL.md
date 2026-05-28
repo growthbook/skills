@@ -13,23 +13,29 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 ## Workflow
 
 1. **Pull the experiment list, most recent first.**
+
    ```bash
-   gb-call GET '/api/v1/experiments?limit=50'
+   gb-call GET '/api/v1/experiments?limit=50&status=stopped'
    ```
-   Returns up to 50 experiments per page (the API cap). The list includes status — filter to `status: "stopped"` in your reasoning; drafts and running experiments don't have settled results yet.
+
+   Returns up to 50 experiments per page (the API cap).
 
 2. **Fetch results for each stopped experiment.** Loop over the stopped IDs:
+
    ```bash
    gb-call GET /api/v1/experiments/<id>/results
    ```
+
    Pace the calls — the API is rate-limited at 60 requests per minute. Cap the pull at ~20 experiments unless the user explicitly wants more; that's plenty for pattern-finding and stays well inside the budget.
 
 3. **Read the patterns.** From the result payloads, identify three things before proposing anything:
+
    - **What's working** — themes shared by experiments where the test variation beat the control (which projects, which surfaces, which kind of change).
    - **What's stalling** — themes shared by losers and inconclusive tests.
    - **What's under-explored** — projects, tags, or surfaces with few experiments compared to the rest.
 
 4. **Compute light aggregate context.** Mentally tally — no need to surface a full dashboard:
+
    - Approximate win rate (won / total settled).
    - Top 3 winners by absolute lift on the primary metric.
    - Top 3 losers by absolute lift.
@@ -37,6 +43,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
    - Project / tag distribution.
 
 5. **Propose 5–7 ideas.** Each proposal contains:
+
    - **Hypothesis** in one sentence: "If we change X, then Y will improve, because Z."
    - **Why this is grounded** — one sentence linking it to a specific past experiment (winner to extend, loser to retry differently, gap to fill). Cite the experiment name or ID.
    - **Primary metric** — pick one. State the type (proportion, mean, ratio, quantile) and why.
@@ -58,7 +65,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
 ## Endpoints used
 
-- `GET /api/v1/experiments?limit=50` — list experiments (returns metadata including status). Cap is 50 per page.
+- `GET /api/v1/experiments?limit=50&status=stopped` — list experiments (returns metadata including status). Cap is 50 per page.
 - `GET /api/v1/experiments/{id}/results` — full results for one experiment. One call per stopped experiment in scope.
 
 ## Output template

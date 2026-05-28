@@ -13,42 +13,46 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 ## Workflow
 
 1. **Frame the hypothesis.** Falsifiable, if/then/because format:
+
    > If we change X, then Y will improve, because Z.
 
    Push for specificity if the hypothesis is vague. "We think users will like it" doesn't say which metric — engagement could mean five different things. "If we move the CTA above the fold, then click-through will increase, because users decide whether to engage before they scroll" gives the prediction something concrete to land against.
 
 2. **Define variations.** Default to two: control (current state) and treatment (the change). Three or more variations are valid but cost statistical power; ask the user whether they really need a third. Number variations from 0 (control) to N.
 
-3. **Pick goal metrics (ideally one, two max).** List available metrics:
+3. **Pick goal metrics (ideally one, two max).** List available templates and available metrics:
+
    ```bash
+   gb-call GET /api/v1/api/v1/experiment-templates
    gb-call GET /api/v1/metrics
    gb-call GET /api/v1/fact-metrics
    ```
-   Help the user choose based on what the hypothesis predicts will move. Note the metric type (proportion, mean, ratio, quantile) — affects sample-size math. Push back at three or more goal metrics and demote the rest to secondary or guardrail: the GrowthBook decision framework treats goal metrics as plural by design, but each additional goal dilutes power and complicates the ship/kill decision.
 
-   **Watch for activation-metric bias.** If a candidate goal/activation metric is downstream of variation differences (e.g., "completed signup" when the variations themselves affect signup completion), the activated cohort is biased — and the bias hides as a passing SRM check. If the user picks one, flag it and suggest analyzing the un-activated cohort as a sanity check.
+   Help the user choose a template if one exists and applies, otherwise help the user choose metrics based on what the hypothesis predicts will move. Note the metric type (proportion, mean, ratio, quantile) — affects sample-size math. Push back at three or more goal metrics and demote the rest to secondary or guardrail: the GrowthBook decision framework treats goal metrics as plural by design, but each additional goal dilutes power and complicates the ship/kill decision.
 
-4. **Pick guardrails (1–3).** Metrics that *shouldn't* regress. Common examples: signup rate, revenue per user, page error rate, latency. Push back if the user skips guardrails; every experiment needs at least one. Guardrails are excluded from multiple-comparison correction by design, so don't over-stack them.
+4. **Pick guardrails (1–3).** Metrics that _shouldn't_ regress. Common examples: signup rate, page error rate, latency. Push back if the user skips guardrails; often it's good for experiments to have at least 1 or 2 guardrails. Guardrails are excluded from multiple-comparison correction by design, so don't over-stack them.
 
 5. **Estimate sample size.** Need three inputs from the user:
-   - Baseline rate (or mean) of the primary metric — fetch the metric's current value if available:
-     ```bash
-     gb-call GET /api/v1/metrics/<metric-id>
-     ```
+
+   - Baseline rate (or mean) of the primary metric
    - Minimum detectable effect (MDE) the user cares about, in relative terms ("a 2% lift in conversion").
    - Daily traffic on the affected surface.
 
    Use a back-of-envelope estimate to gut-check, then point the user at GrowthBook's in-app Power Calculator for the real number. A common rule-of-thumb GrowthBook documents is **≥ 200 conversions per variation** for proportion metrics; the formula `n ≈ 16 × p × (1 - p) / (p × MDE)^2` per variation lands in roughly the same place for 80% power. Don't quote three significant figures from either — they're estimates. Round up and surface the inputs.
 
    Compute the expected experiment duration: `2 × n / daily_traffic`. Flag the duration on both ends:
+
    - **> 4 weeks** — likely underpowered for practical use; consider a larger MDE, a more sensitive metric, or higher-traffic surface.
    - **< 1 week** — risks day-of-week and weekend effects skewing the result. Recommend at least one full weekly cycle.
 
 6. **Resolve project + datasource.** If the user mentions a specific project, get its ID:
+
    ```bash
    gb-call GET /api/v1/projects
    ```
+
    List datasources for context (the launch step will pick one, but worth showing the user what's available):
+
    ```bash
    gb-call GET /api/v1/data-sources
    ```

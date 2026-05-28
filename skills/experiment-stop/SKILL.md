@@ -13,9 +13,11 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 ## Workflow
 
 1. **Fetch the current experiment.**
+
    ```bash
    gb-call GET /api/v1/experiments/<experiment-id>
    ```
+
    Check the `status` field. Only `running` experiments should be stopped via this skill. If `status === "draft"`, the experiment hasn't started — the user wants to delete it, not stop it (different operation). If `status === "stopped"`, it's already done.
 
    Also capture the `type` field. If `type === "multi-armed-bandit"`, halt and tell the user this skill targets standard A/B tests; bandits have their own lifecycle (stop is similar but interpretation and rollout differ — recommend they review in the UI before scripting).
@@ -41,6 +43,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
    If yes, set `enableTemporaryRollout: true` and `releasedVariationId: <winner ID>` in the payload. If no, the experiment stops but you leave the flag alone — surface that the user will need to clean up the `experiment-ref` rule manually.
 
 4. **Confirm intent.** Restate the action in plain English:
+
    > "Stopping experiment '<name>', declaring variation `var_treatment_a` (Treatment A) as the winner, and enabling temporary rollout to ship it to 100% of eligible traffic."
 
    Get explicit confirmation before posting. Stopping itself is reversible (you can restart), but declaring a winner and enabling a rollout produces downstream signals — don't do it on a hunch.
@@ -48,11 +51,13 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 5. **Build the payload.** The body is **flat**; there is no nested `resultSummary`.
 
    Stop without a declared winner:
+
    ```json
    { "results": "inconclusive" }
    ```
 
    Stop with a declared winner, no rollout:
+
    ```json
    {
      "results": "won",
@@ -62,6 +67,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
    ```
 
    Stop with a declared winner and ship via temporary rollout:
+
    ```json
    {
      "results": "won",
@@ -73,6 +79,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
    ```
 
    Field reference:
+
    - `results` — required. One of `"won"`, `"lost"`, `"inconclusive"`, `"dnf"` (did not finish).
    - `winnerVariationId` — string variation ID (e.g. `var_abc123`). Required when `results === "won"` and the experiment has multiple test variations.
    - `releasedVariationId` — string variation ID. Required when `enableTemporaryRollout: true`. Usually equals `winnerVariationId`.
@@ -82,6 +89,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
    - `dateEnded` — optional ISO datetime; defaults to now.
 
 6. **Post the update.**
+
    ```bash
    echo '<payload-json>' | gb-call POST /api/v1/experiments/<experiment-id>/stop -
    ```
@@ -104,16 +112,16 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
 ## Guardrails
 
-- **`winnerVariationId` is a variation ID *string* (e.g. `var_abc123`), not an integer index, not a name, not the variation's `key`.** Get this wrong and the request 400s or the wrong variation is recorded as the winner.
+- **`winnerVariationId` is a variation ID _string_ (e.g. `var_abc123`), not an integer index, not a name, not the variation's `key`.** Get this wrong and the request 400s or the wrong variation is recorded as the winner.
 - **The endpoint is `POST /api/v1/experiments/<id>/stop`, not `POST /api/v1/experiments/<id>`.** The body shape is flat — there is no `resultSummary` wrapper. The generic update endpoint exists but takes different fields; use the dedicated stop endpoint here.
-- **Never declare a winner the user didn't pick.** Even if the results look obvious, force the user to choose the variation ID. Surface results, but don't pre-fill. *Skill convention, not GrowthBook policy: the API accepts any variation ID as `winnerVariationId`; the safety is enforced here, not server-side.*
+- **Never declare a winner the user didn't pick.** Even if the results look obvious, force the user to choose the variation ID. Surface results, but don't pre-fill. _Skill convention, not GrowthBook policy: the API accepts any variation ID as `winnerVariationId`; the safety is enforced here, not server-side._
 - **Don't stop drafts.** A `draft` experiment isn't running — what the user wants there is `DELETE /api/v1/experiments/<id>` (separate skill, not covered here). Surface the confusion if they ask to stop a draft.
 - **Don't stop already-stopped experiments.** The API may accept the call but it's effectively a no-op; tell the user it's already done. To change the results metadata on an already-stopped experiment, post again with the new `results` / `winnerVariationId` / `analysis`.
 - **Bandits are out of scope.** `type === "multi-armed-bandit"` experiments need different handling — halt and tell the user.
 - **`releasedVariationId` is required when `enableTemporaryRollout: true`.** The API rejects the combination otherwise. They're usually the same as `winnerVariationId` but don't have to be — e.g., a "lost" result that rolls everyone back to control would set `releasedVariationId: <control variation ID>` with `results: "lost"`.
 - **Always remind about the linked flag.** Stopping the experiment does not remove the `experiment-ref` rule from the linked flag. Without a temporary rollout, the flag keeps routing to a stale experiment until the user cleans the rule up.
 - **`analysis` should explain the decision in plain English (markdown).** Future readers (including future-self) will want context. Don't leave it blank when declaring a winner.
-- **Run `experiment-analyze` first if the user hasn't.** Stopping based on a glance at the dashboard is a common mistake — interim numbers can flip, and the data-quality checks in `experiment-analyze` (SRM, suspicious uplift, minimum data thresholds) can flag results that look conclusive but aren't.
+- **Run `experiment-analyze` first if the user hasn't.** Stopping based on a glance at the dashboard is a common mistake — interim numbers can flip, and the data-quality checks in `experiment-analyze` can flag results that look conclusive but aren't.
 
 ## Endpoints used
 
@@ -124,5 +132,5 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 ## Handoffs
 
 - `experiment-analyze` — run first if the user wants to interpret results before deciding.
-- `flag-targeting` — after stopping with a declared winner (with or without temporary rollout), the linked flag's `experiment-ref` rule needs to be updated or removed.
+- `flag-targeting` — after stopping with a declared winner, the linked flag's `experiment-ref` rule needs to be updated or removed, especially if no temporary rollout is being used.
 - `experiment-design` and `experiment-launch` — for the next test if this one informed a follow-up.
