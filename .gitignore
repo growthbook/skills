@@ -1,0 +1,5 @@
+# Local credential files. The canonical location is ~/.config/growthbook/.env,
+# but a contributor may create one inside the repo while testing. Never commit.
+.env
+.env.local
+.env.*.local

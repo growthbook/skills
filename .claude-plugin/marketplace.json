@@ -1,0 +1,16 @@
+{
+  "name": "growthbook-skills",
+  "owner": {
+    "name": "GrowthBook",
+    "email": "support@growthbook.io",
+    "url": "https://growthbook.io"
+  },
+  "description": "GrowthBook agent skills for feature flagging and experimentation.",
+  "plugins": [
+    {
+      "name": "growthbook",
+      "source": "./",
+      "description": "Lifecycle skills for GrowthBook: flag creation, flag discovery, experiment brainstorming."
+    }
+  ]
+}
