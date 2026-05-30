@@ -142,7 +142,16 @@ echo '<payload>' | gb-call POST /api/v2/features/<flag-id>/revisions/new/rules -
 
 ### Path C — Check monitoring status or respond to signals
 
-**Check status via API:**
+Before taking any action, open the feature page — it shows ramp step progress, guardrail and signal metric health, experiment-level health checks (SRM, multiple exposures, no traffic), and full metric performance drilldowns with effect sizes and confidence intervals. The API `/status` endpoint gives you the `decision`, but the UI gives you the context to make it:
+
+```bash
+# macOS:
+open <host>/features/<flag-id>
+# Linux:
+xdg-open <host>/features/<flag-id>
+```
+
+**Check status via API** (for scripted pipelines or when the user wants a quick decision signal):
 ```bash
 gb-call GET /api/v1/ramp-schedules/<rs-id>/status
 ```

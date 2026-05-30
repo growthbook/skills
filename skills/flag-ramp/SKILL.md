@@ -1,7 +1,8 @@
 ---
 name: flag-ramp
 description: Create or manage a multi-step ramp schedule for a GrowthBook feature flag rule — progressively increasing traffic exposure over time with defined intervals between steps. Use when the user says "gradually roll this out", "increase traffic from 5% to 100% over a week", "set up a ramp schedule", "advance to the next ramp step", "pause the rollout", "roll back the ramp", or "set a cutoff date on this rollout". For rollouts that also need guardrail metric monitoring and automatic signals, use flag-monitoring — it builds on this skill with monitoring configuration. For simple on/off time windows, use flag-schedule.
-allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *), Bash(open https://*), Bash(xdg-open https://*)
+
 ---
 
 # flag-ramp
@@ -143,7 +144,16 @@ This stages a `detach` ramp action on the draft. The live schedule is removed wh
 
 ### Path D — Manage a live ramp (post-publish)
 
-After publish, the ramp runs as a live `RampSchedule` entity. Get its ID from the flag's rules (`rampScheduleId` field on the rule), or look it up:
+Before taking any action, suggest the user open the feature page for a full picture of ramp progress — the UI surfaces schedule status, step timeline, and metric health that the API only returns as raw values:
+
+```bash
+# macOS:
+open <host>/features/<flag-id>
+# Linux:
+xdg-open <host>/features/<flag-id>
+```
+
+After that, for API-based management: get the ramp schedule ID from the flag's rules (`rampScheduleId` field on the rule), or look it up:
 
 ```bash
 gb-call GET '/api/v1/ramp-schedules?featureId=<flag-id>'
