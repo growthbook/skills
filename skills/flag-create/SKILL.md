@@ -81,3 +81,12 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 ## After creation
 
 The response contains the flag's full configuration. Show the user the flag ID, a reminder that it's disabled everywhere, and a link to the flag in the GrowthBook UI (`https://app.growthbook.io/features/{id}` for cloud, or the appropriate self-hosted origin).
+
+## Handoffs
+
+- `flag-toggle` — to enable the flag in an environment
+- `flag-targeting` — to add force or rollout rules
+- `flag-default-value` — to change the fallback value served when no rules match
+- `flag-metadata` — to set project, tags, description, or owner after creation
+- `flag-experiment` — to wire this flag to an A/B experiment
+- `experiment-design` — if the user actually wants a full A/B test (create experiment first, flag second)

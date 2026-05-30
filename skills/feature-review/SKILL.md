@@ -1,0 +1,125 @@
+---
+name: feature-review
+description: Request or submit an approval review on a GrowthBook feature flag draft revision. Use when the user says "request review for this draft", "approve this change", "reject this draft", "request changes on revision X", "I want to review flag Y's pending draft", "submit my approval", "mark this as needing changes", "who needs to approve this", or "check the review status". For creating and editing drafts, use the relevant flag-* write skill. For publishing an approved draft or resolving merge conflicts, use feature-publish. For listing all pending drafts across flags, use feature-revisions.
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *), Bash(open https://*), Bash(xdg-open https://*)
+---
+
+# feature-review
+
+Request and submit approval reviews on GrowthBook feature flag draft revisions. Only needed when the org has approval workflows configured — if approvals aren't required, feature-publish handles the full flow without a review step.
+
+Two roles use this skill: the **drafter** (requests a review, can't self-approve) and the **reviewer** (submits the review decision).
+
+All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It needs `GB_API_KEY` set in env or written to `~/.config/growthbook/.env` by `/growthbook:setup`.
+
+## Approval flow
+
+```
+draft → [request-review] → pending-review → [approve]           → approved → [publish]
+                                           → [request-changes]  → changes-requested → [edit + re-request] → pending-review
+                                           → [comment]          → pending-review (status unchanged)
+```
+
+## Workflow
+
+### Path A — Request review (drafter asking for approval)
+
+1. Resolve the revision. If the user gave a version number, use it. Otherwise try `/latest` (happy path when one draft exists), then fall back to listing if needed:
+   ```bash
+   gb-call GET /api/v2/features/<id>/revisions/latest
+   # or if version is known:
+   gb-call GET /api/v2/features/<id>/revisions/<version>
+   ```
+   Accept `draft` or `changes-requested` status. For any other status, surface it and explain what it means using the status table from feature-revisions.
+
+2. Request review:
+   ```bash
+   echo '{"comment":"<optional context for reviewers>"}' \
+     | gb-call POST /api/v2/features/<id>/revisions/<version>/request-review -
+   ```
+
+   Revision moves to `pending-review`. Tell the user a reviewer needs to approve before it can be published via feature-publish. Remind them that self-approval is not allowed — a different team member must review.
+
+### Path B — Submit a review (reviewer acting on a pending-review revision)
+
+1. If the user doesn't know the version, list pending-review revisions:
+   ```bash
+  # For a specific flag:
+  gb-call GET '/api/v2/features/<id>/revisions?status=pending-review'
+
+  # Across all flags:
+  gb-call GET '/api/v2/feature-revisions?status=pending-review'
+  ```
+
+2. For anything non-trivial, offer to open the GrowthBook UI first — the side-by-side diff and approval controls are clearer than text:
+   ```bash
+   # macOS:
+   open <host>/features/<flag-id>?v=<version>
+   # Linux:
+   xdg-open <host>/features/<flag-id>?v=<version>
+   ```
+   Derive `<host>` from `GB_API_URL` by replacing `api.` → `app.`. If the reviewer prefers to work in the UI, stop here.
+
+   For API-based review, fetch both the revision and the live feature to show a proper before/after diff:
+   ```bash
+   gb-call GET /api/v2/features/<id>/revisions/<version>   # draft state
+   gb-call GET /api/v2/features/<id>                       # current live state
+   ```
+   Surface: which rules changed (added/edited/removed), defaultValue change, metadata changes, env toggle changes, prerequisites changes — comparing draft fields against the live feature.
+
+3. Ask the reviewer which action they want:
+   - **approve** — changes look good, ready to publish
+   - **request-changes** — issues found, author needs to update
+   - **comment** — feedback only, no status change
+
+4. Submit the review:
+   ```bash
+   echo '{"action":"approve","comment":"<optional>"}' \
+     | gb-call POST /api/v2/features/<id>/revisions/<version>/submit-review -
+   ```
+
+   Status transitions:
+   - `approve` → `approved` — tell user to publish via feature-publish
+   - `request-changes` → `changes-requested` — tell reviewer what happens next (author edits, re-requests)
+   - `comment` → `pending-review` unchanged — comment is recorded
+
+### Path C — Check review status
+
+If version isn't known, try `/latest` first:
+```bash
+gb-call GET /api/v2/features/<id>/revisions/latest
+# or with a known version:
+gb-call GET /api/v2/features/<id>/revisions/<version>
+```
+
+Report status and what needs to happen next:
+
+| Status | Next step |
+| --- | --- |
+| `draft` | Author requests review when ready |
+| `pending-review` | Reviewer submits a decision |
+| `approved` | Author publishes via feature-publish |
+| `changes-requested` | Author edits draft, then re-requests review |
+
+## Guardrails
+
+- **Self-approval is blocked server-side.** Before calling submit-review, check whether the current user (`GB_EMAIL`) created the draft. If they did, halt: "You created this draft — a different team member must approve it."
+- **Can only request-review on `draft` or `changes-requested` status.** Surface the actual status if the user tries on anything else.
+- **Can only submit-review on `pending-review` status.** Surface the actual status if it doesn't match.
+- **`changes-requested` is not discarded.** The draft still exists; the author edits it and re-requests review via Path A. Don't suggest discarding unless the author explicitly wants to abandon the changes.
+- **Reset-review-on-changes.** If the org has this setting enabled, any edit to an `approved` draft reverts it to `draft`. Warn the user if they're about to edit an already-approved revision: "Editing this revision will reset its approval status — you'll need to request review again."
+- **Approval ≠ publication.** An `approved` draft is not yet live. The author still needs to run feature-publish.
+- **This skill does not publish.** After approval, hand off to feature-publish.
+
+## Endpoints used
+
+- `GET /api/v2/features/:id/revisions/:version` — inspect revision before acting
+- `GET /api/v2/features/:id/revisions` (status filter) — find pending-review revisions for a flag
+- `GET /api/v2/feature-revisions` (status, mine filters) — find pending-review revisions across all flags
+- `POST /api/v2/features/:id/revisions/:version/request-review` (body: optional comment)
+- `POST /api/v2/features/:id/revisions/:version/submit-review` (body: action + optional comment)
+
+## Handoffs
+
+- `feature-revisions` — to list and inspect all open drafts
+- `feature-publish` — after approval, to publish the draft live
