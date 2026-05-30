@@ -42,14 +42,27 @@ draft → [request-review] → pending-review → [approve]           → approv
 
 ### Path B — Submit a review (reviewer acting on a pending-review revision)
 
-1. If the user doesn't know the version, list pending-review revisions:
-   ```bash
-  # For a specific flag:
-  gb-call GET '/api/v2/features/<id>/revisions?status=pending-review'
+1. Identify the revision. A version number alone is not enough — you always need the flag ID too (version numbers are per-flag counters, not globally unique). Collect whichever of these the user has, then query accordingly:
 
-  # Across all flags:
-  gb-call GET '/api/v2/feature-revisions?status=pending-review'
-  ```
+   **Flag ID + version known** → fetch directly:
+   ```bash
+   gb-call GET /api/v2/features/<id>/revisions/<version>
+   ```
+
+   **Flag ID known, version unknown** → list pending-review on that flag:
+   ```bash
+   gb-call GET '/api/v2/features/<id>/revisions?status=pending-review'
+   ```
+
+   **Neither known, but author name/email known** → filter cross-feature by author. If the user gives a name rather than an email, ask for the email or userId before querying:
+   ```bash
+   gb-call GET '/api/v2/feature-revisions?status=pending-review&author=<email-or-userid>'
+   ```
+
+   **Nothing known** → list all pending-review revisions across the org and let the user identify theirs:
+   ```bash
+   gb-call GET '/api/v2/feature-revisions?status=pending-review'
+   ```
 
 2. For anything non-trivial, offer to open the GrowthBook UI first — the side-by-side diff and approval controls are clearer than text:
    ```bash

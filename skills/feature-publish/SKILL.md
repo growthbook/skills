@@ -2,7 +2,6 @@
 name: feature-publish
 description: Publish a GrowthBook feature flag draft revision, resolve merge conflicts, revert to a prior revision, or discard a draft. Use when the user says "publish this draft", "push this live", "go live with revision X", "there's a merge conflict on my flag", "rebase my draft", "fix the merge conflict on flag X", "revert flag X to a previous version", "roll back this flag change", "discard this draft", or "abandon these changes". For requesting or submitting an approval review before publish, use feature-review. For listing and inspecting drafts, use feature-revisions.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *), Bash(open https://*), Bash(xdg-open https://*)
-
 ---
 
 # feature-publish
@@ -33,10 +32,14 @@ gb-call GET '/api/v2/features/<id>/revisions/latest?mine=true'
 gb-call GET /api/v2/features/<id>/revisions/latest
 ```
 
+If `/latest` returns 404, there are no active drafts on this flag — nothing to publish. Confirm with the user and stop.
+
 If there are likely concurrent drafts, list and let the user choose:
 
 ```bash
-gb-call GET '/api/v2/features/<id>/revisions?status=approved,mine=true'
+# User's own active drafts:
+gb-call GET '/api/v2/features/<id>/revisions?status=all-drafts&mine=true'
+# All active drafts:
 gb-call GET '/api/v2/features/<id>/revisions?status=all-drafts'
 ```
 
@@ -138,15 +141,20 @@ If the user wants to resolve via API, continue:
 gb-call GET /api/v2/features/<id>/revisions/<version>/merge-status
 ```
 
-Returns `{ hasConflicts: true, conflicts: [{ key: "...", ... }] }`. Each conflict has a `key` identifying which field collided.
+Returns `{ hasConflicts: true, conflicts: [...] }`. Each conflict object has:
+- `key` — which field collided (`defaultValue`, `rules`, `prerequisites`, `environmentsEnabled.<envId>`)
+- `name` — human-readable label for the field
+- `revision` — the **draft's** value
+- `live` — the **current live** value
+- `base` — the value when the draft was originally created
 
 Possible conflict keys: `defaultValue`, `rules`, `prerequisites`, `environmentsEnabled.<envId>` (e.g., `environmentsEnabled.production`).
 
 **Step 3b-ii: For each conflict, show the user both versions and ask which to keep.**
 
-Present the draft's value vs the current live value side-by-side. Ask:
-- **overwrite** — keep the draft's version (your draft wins; the concurrent change is discarded)
-- **discard** — keep the live version (the concurrent change wins; your draft's edit to this field is dropped)
+Use the `revision` field for the draft's version and `live` for the current live version. Present them side-by-side and ask:
+- **overwrite** — keep the draft's version (`revision` wins; the concurrent live change is discarded)
+- **discard** — keep the live version (`live` wins; the draft's change to this field is dropped)
 
 Do **not** auto-resolve any conflict. Each one requires a human judgment call about which version is correct.
 
@@ -171,7 +179,7 @@ Confirm clearly before proceeding:
 gb-call POST /api/v2/features/<id>/revisions/<version>/discard
 ```
 
-Only works on `draft` status. For `pending-review` or `approved`, the review must be declined first via feature-review, which returns the revision to `draft`.
+Works on any non-terminal status — `draft`, `pending-review`, `approved`, and `changes-requested` can all be discarded directly. Only `published` and `discarded` are blocked by the server.
 
 ### 5. Revert path (restore a prior published revision)
 
@@ -195,9 +203,13 @@ echo '{"strategy":"draft"}' \
 ### 6. Report
 
 - Flag ID and outcome (published / approval-requested / discarded / reverted).
-- Revision version and new status.
-- For publish: what the flag now evaluates to (default value, enabled environments).
-- UI link: derive `<host>` from `GB_API_URL` by replacing `api.` → `app.` (cloud default: `https://app.growthbook.io`). Link: `<host>/features/<flag-id>?v=<version>`.
+- Revision version and new status (from the publish response).
+- UI link — derive `<host>` from `GB_API_URL` by replacing `api.` → `app.` (cloud default: `https://app.growthbook.io`). Open or display: `<host>/features/<flag-id>?v=<version>`.
+- For publish: optionally fetch the full flag state to summarize what's now live:
+  ```bash
+  gb-call GET /api/v2/features/<id>
+  ```
+  Surface: which environments are enabled, the default value, and a one-line summary of the active rules. Skip this call if the user is in a hurry — the UI link gives them the full picture.
 
 ## Guardrails
 
