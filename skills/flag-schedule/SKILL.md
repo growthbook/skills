@@ -20,6 +20,15 @@ GrowthBook supports two scheduling mechanisms on rules:
 
 **Legacy `scheduleRules`** — a 2-element array `[start, end]` where each element is `{ timestamp: "<ISO 8601 or null>", enabled: <bool> }`. Still accepted by the API; the simple `schedule` field is cleaner for new rules.
 
+## How the OFF state works
+
+A scheduled rule is a **rule-level** mechanism, not a flag-level toggle. When the rule is inactive (outside its window), it is skipped in evaluation — the flag falls through to whatever comes next in rule order, ultimately landing on `defaultValue`.
+
+This means:
+- The rule should serve the **ON value** (`"true"` for a boolean flag) during the active window.
+- `defaultValue` is the **OFF state** when no rules match. Verify it is set correctly before publishing.
+- The scheduled rule should be **last in the rules array** (for new rules) so nothing below it can accidentally serve the ON value when the schedule is inactive. For existing rules, check what's below — anything serving a matching value below this rule would fire when the schedule is off.
+
 ## Workflow
 
 ### Path A — Create a new rule with a schedule
@@ -28,34 +37,47 @@ GrowthBook supports two scheduling mechanisms on rules:
    ```bash
    gb-call GET /api/v2/features/<flag-id>
    ```
-   Capture `valueType` and current rules. New rules append to the bottom; warn the user if existing rules may match before this one.
+   Capture `valueType`, `defaultValue`, and current rules.
 
-2. **Collect the schedule:**
-   - Start time (ISO 8601, e.g., `"2026-06-01T09:00:00Z"`) — the rule activates at this time
-   - End time (ISO 8601) — the rule deactivates at this time
-   - At least one of start or end is required
+   **Check `defaultValue` is the OFF state.** For a boolean flag, it should be `"false"`. If it isn't, warn the user:
+   > "When the scheduled rule is inactive, the flag will return `<defaultValue>`. Is that the intended off-state? If not, update it first via flag-default-value."
 
-   Confirm the timezone. GrowthBook stores times in UTC — if the user gives a local time, convert before sending.
+   **Check rule order.** The new rule will append to the bottom. If existing rules above it serve the ON value unconditionally, they'll fire before the schedule can — warn the user and suggest reviewing rule order via flag-rules after adding.
+
+2. **Collect the schedule times:**
+
+   Ask for:
+   - Start time (or `null` for "immediately")
+   - End time (or `null` for "never expires")
+   - The user's timezone, unless they explicitly specify one in the time string
+
+   The API accepts ISO 8601 with timezone offset — use the user's local timezone directly, no UTC conversion needed:
+   ```
+   "tomorrow at midnight" in US Eastern → "2026-05-30T00:00:00-05:00"
+   "right after Christmas" → "2026-12-26T00:00:00-05:00"
+   ```
+
+   For natural-language times, use `currentDate` from context to anchor relative dates ("tomorrow", "next Friday"). For ambiguous phrases like "right after Christmas" or "end of the sale", confirm the exact datetime with the user before proceeding. Always confirm the full resolved datetime back to the user before building the payload.
 
 3. **Build the payload and post:**
    ```bash
    echo '{
      "rule": {
        "type": "force",
-       "value": "<string>",
+       "value": "<on-value>",
        "description": "<optional>",
        "enabled": true,
        "allEnvironments": false,
        "environments": ["<env-id>"]
      },
      "schedule": {
-       "startDate": "2026-06-01T09:00:00Z",
-       "endDate": "2026-06-07T23:59:59Z"
+       "startDate": "2026-05-30T00:00:00-05:00",
+       "endDate": "2026-12-26T00:00:00-05:00"
      }
    }' | gb-call POST /api/v2/features/<flag-id>/revisions/new/rules -
    ```
 
-   For a rollout rule, swap `type: "rollout"` and add `coverage` and `hashAttribute`.
+   Omit `startDate` or `endDate` if no bound on that side.
 
 4. Capture the returned `version`. Hand off to feature-publish.
 
@@ -65,29 +87,31 @@ GrowthBook supports two scheduling mechanisms on rules:
    ```bash
    gb-call GET /api/v2/features/<flag-id>
    ```
-   Show the rules list. Get the rule `id` (UUID) the user wants to schedule.
+   Show the rules list. Get the rule `id` (UUID) the user wants to schedule. Note the rule's current position in the array — if it's not last, check whether rules below it would serve an unintended value when this schedule is inactive.
 
-2. **Build the scheduleRules patch:**
+2. **Collect the schedule times** (same as Path A step 2).
+
+3. **Build the scheduleRules patch:**
    ```json
    {
      "scheduleRules": [
-       { "timestamp": "2026-06-01T09:00:00Z", "enabled": true },
-       { "timestamp": "2026-06-07T23:59:59Z", "enabled": false }
+       { "timestamp": "2026-05-30T00:00:00-05:00", "enabled": true },
+       { "timestamp": "2026-12-26T00:00:00-05:00", "enabled": false }
      ],
      "scheduleType": "schedule"
    }
    ```
-   - Element 0: the start event (`enabled: true` means "turn the rule on at this time")
-   - Element 1: the end event (`enabled: false` means "turn the rule off at this time")
-   - Use `null` for a timestamp to omit that event (start-only or end-only)
-   - `scheduleType` must be `"schedule"` when using scheduleRules
+   - Element 0: the start event (`enabled: true` — rule turns on at this time)
+   - Element 1: the end event (`enabled: false` — rule turns off at this time)
+   - Use `null` for a timestamp to omit that bound (open-ended start or end)
+   - `scheduleType` must be `"schedule"`
 
-3. **Apply the patch:**
+4. **Apply the patch:**
    ```bash
    echo '<patch>' | gb-call PUT /api/v2/features/<flag-id>/revisions/new/rules/<rule-id> -
    ```
 
-4. Capture the returned `version`. Hand off to feature-publish.
+5. Capture the returned `version`. Hand off to feature-publish.
 
 ### Path C — Remove a schedule from a rule
 
@@ -105,13 +129,15 @@ Setting all timestamps to `null` and `scheduleType: "none"` clears the schedule.
 
 ## Guardrails
 
-- **Times are stored in UTC.** Always confirm the user's intended timezone and convert before sending. `"2026-06-01T09:00:00-05:00"` and `"2026-06-01T14:00:00Z"` are the same moment — use UTC form in the API.
-- **`scheduleRules` is a 2-element array, not a list of arbitrary events.** Element 0 = start event, element 1 = end event. The server enforces this shape.
-- **Use `schedule` field for new rules, `scheduleRules` for patching existing ones.** The `schedule` helper on rule creation is cleaner. When patching an existing rule, use `scheduleRules` directly.
-- **Scheduled rules still need to be enabled.** The schedule controls when the rule is active, but `enabled: false` on the rule overrides the schedule. Don't schedule a disabled rule.
-- **Publishing creates the schedule.** The schedule becomes live only after the draft is published. If publish is delayed by approvals, the schedule's start time may pass before it goes live.
-- **For multi-step progressive rollouts, use flag-ramp.** This skill handles on/off windows only. If the user wants "start at 5%, increase to 25% after a day, 100% after a week," that's flag-ramp.
-- **Evaluation order still applies.** A scheduled rule that's currently inactive (before start time or after end time) is skipped in evaluation; the next rule in order is checked.
+- **The OFF state is `defaultValue`, not a toggle.** Scheduling works at the rule level — outside the active window the rule is skipped and the flag falls through to `defaultValue`. Always verify `defaultValue` is the intended off state before publishing.
+- **Place new scheduled rules last.** Rules evaluate top-to-bottom; a scheduled rule that's inactive is simply skipped. If another rule below it serves the ON value unconditionally, that rule fires during the inactive period. For new rules, last position is safest.
+- **The API accepts ISO 8601 with timezone offset.** Send times in the user's local timezone using the offset form: `"2026-12-26T00:00:00-05:00"`. No UTC conversion needed. Confirm the resolved datetime with the user before building the payload — never silently assume a timezone.
+- **Resolve natural-language times explicitly.** Use `currentDate` from context for relative dates ("tomorrow", "next Friday"). For ambiguous phrases ("right after Christmas", "end of the sale"), confirm the exact date and time with the user before proceeding.
+- **`scheduleRules` is a 2-element array.** Element 0 = start event (`enabled: true`), element 1 = end event (`enabled: false`). The server enforces this shape — it is not a list of arbitrary events.
+- **Use `schedule` field for new rules, `scheduleRules` for patching existing ones.**
+- **Scheduled rules must have `enabled: true`.** The schedule controls when the rule is active within the evaluation cycle, but `enabled: false` on the rule overrides the schedule entirely.
+- **Publishing activates the schedule.** If publish is delayed by approvals and the start time passes before the revision goes live, the rule will activate immediately on publish rather than at the scheduled time.
+- **For multi-step progressive rollouts, use flag-ramp.** This skill handles on/off windows only.
 
 ## Endpoints used
 
