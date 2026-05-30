@@ -37,12 +37,15 @@ This means:
    ```bash
    gb-call GET /api/v2/features/<flag-id>
    ```
-   Capture `valueType`, `defaultValue`, and current rules.
+   Capture `valueType`, `defaultValue`, `environmentSettings`, and current rules.
+
+   **Check the target environment is enabled.** If `environmentSettings.<env>.enabled` is `false`, the scheduled rule will silently do nothing — warn the user:
+   > "The flag is currently disabled in `<env>`. The scheduled rule won't fire until the flag is enabled. Enable it via flag-toggle (it can land in the same draft as this change)."
 
    **Check `defaultValue` is the OFF state.** For a boolean flag, it should be `"false"`. If it isn't, warn the user:
    > "When the scheduled rule is inactive, the flag will return `<defaultValue>`. Is that the intended off-state? If not, update it first via flag-default-value."
 
-   **Check rule order.** The new rule will append to the bottom. If existing rules above it serve the ON value unconditionally, they'll fire before the schedule can — warn the user and suggest reviewing rule order via flag-rules after adding.
+   **Check rule order.** The new rule will append to the bottom. If existing rules above it serve the ON value unconditionally to all users, they'll fire before the schedule can — warn the user and suggest reviewing rule order via flag-rules after adding.
 
 2. **Collect the schedule times:**
 
@@ -51,15 +54,18 @@ This means:
    - End time (or `null` for "never expires")
    - The user's timezone, unless they explicitly specify one in the time string
 
-   The API accepts ISO 8601 with timezone offset — use the user's local timezone directly, no UTC conversion needed:
+   The API accepts ISO 8601 with timezone offset — use the user's local timezone directly, no UTC conversion needed. Use the correct offset for the date in question (account for daylight saving time):
    ```
-   "tomorrow at midnight" in US Eastern → "2026-05-30T00:00:00-05:00"
-   "right after Christmas" → "2026-12-26T00:00:00-05:00"
+   "tomorrow at midnight" in US Eastern (summer, EDT) → "2026-05-30T00:00:00-04:00"
+   "right after Christmas" in US Eastern (winter, EST) → "2026-12-26T00:00:00-05:00"
    ```
 
    For natural-language times, use `currentDate` from context to anchor relative dates ("tomorrow", "next Friday"). For ambiguous phrases like "right after Christmas" or "end of the sale", confirm the exact datetime with the user before proceeding. Always confirm the full resolved datetime back to the user before building the payload.
 
 3. **Build the payload and post:**
+
+   Pre-validate `value` against the flag's `valueType` (captured in step 1): boolean flags must use `"true"`/`"false"`, number flags must parse as a number, json flags must be valid JSON.
+
    ```bash
    echo '{
      "rule": {
@@ -129,6 +135,7 @@ Setting all timestamps to `null` and `scheduleType: "none"` clears the schedule.
 
 ## Guardrails
 
+- **Draft version threading.** If a version number is already in context from a previous write skill in this session, use it explicitly (e.g. `.../revisions/42/rules`) instead of `new`. This keeps all changes in the same draft. Fall back to `new` when starting fresh.
 - **The OFF state is `defaultValue`, not a toggle.** Scheduling works at the rule level — outside the active window the rule is skipped and the flag falls through to `defaultValue`. Always verify `defaultValue` is the intended off state before publishing.
 - **Place new scheduled rules last.** Rules evaluate top-to-bottom; a scheduled rule that's inactive is simply skipped. If another rule below it serves the ON value unconditionally, that rule fires during the inactive period. For new rules, last position is safest.
 - **The API accepts ISO 8601 with timezone offset.** Send times in the user's local timezone using the offset form: `"2026-12-26T00:00:00-05:00"`. No UTC conversion needed. Confirm the resolved datetime with the user before building the payload — never silently assume a timezone.
