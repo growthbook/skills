@@ -142,8 +142,34 @@ echo '<payload>' | gb-call POST /api/v2/features/<flag-id>/revisions/new/rules -
 
 ### Path C — Check monitoring status or respond to signals
 
-Monitoring status and guardrail health are best viewed in the GrowthBook UI — open it directly:
+**Check status via API:**
+```bash
+gb-call GET /api/v1/ramp-schedules/<rs-id>/status
+```
+Returns `decision` (`"advance"` / `"hold"` / `"rollback"` / `"waiting"`), guardrail health, and whether the current step is awaiting approval. Get `<rs-id>` from the flag's rule (`rampScheduleId`) or:
+```bash
+gb-call GET '/api/v1/ramp-schedules?featureId=<flag-id>'
+```
 
+**Approve a monitored hold-for-approval step** (after interval elapsed and monitoring shows healthy):
+```bash
+gb-call POST /api/v1/ramp-schedules/<rs-id>/actions/approve-step
+```
+Returns 400 if monitoring hasn't produced fresh healthy results yet or the interval is still counting — poll `/status` first.
+
+**Advance past a monitoring hold** (decision is `"hold"` and you've reviewed the signals and accept the risk):
+```bash
+echo '{}' | gb-call POST /api/v1/ramp-schedules/<rs-id>/actions/advance -
+```
+
+**Roll back on guardrail failure** (when `decision: "rollback"` or guardrails are failing):
+```bash
+echo '{"reason":"<description of what failed>"}' | gb-call POST /api/v1/ramp-schedules/<rs-id>/actions/rollback -
+```
+
+**Emergency stop** (fastest — disable the flag environment via flag-toggle, no ramp schedule ID needed).
+
+**Open the UI** for a visual health dashboard:
 ```bash
 # macOS:
 open <host>/features/<flag-id>
@@ -151,10 +177,7 @@ open <host>/features/<flag-id>
 xdg-open <host>/features/<flag-id>
 ```
 
-If the user reports guardrails are failing and needs to act immediately:
-- **Emergency stop**: disable the flag in the environment via flag-toggle (kills all rules instantly, no draft needed)
-- **Reduce coverage**: create a new draft, patch the rule's `coverage` downward via flag-ramp, publish — slower but preserves ramp state
-- **Let the system act**: if `autoUpdate: true` was set, the ramp may already be rolling back — check the UI first
+For the full live ramp management action reference (pause, resume, complete, restart), see flag-ramp Path D.
 
 ## Guardrails
 
@@ -182,11 +205,20 @@ This skill orchestrates:
 
 ## Endpoints used
 
+**Draft (pre-publish):**
 - `GET /api/v2/features/:id` — fetch flag and current rules
 - `GET /api/v1/datasources` — resolve datasource IDs
 - `GET /api/v1/metrics` — resolve guardrail and signal metric IDs
 - `PUT /api/v2/features/:id/revisions/new/rules/:ruleId/ramp-schedule` — create/update ramp schedule with monitoringConfig
 - `POST /api/v2/features/:id/revisions/new/rules` — add safe-rollout rule
+
+**Live ramp management:**
+- `GET /api/v1/ramp-schedules` — list (`featureId`, `ruleId` filters)
+- `GET /api/v1/ramp-schedules/:id/status` — real-time health, decision, per-metric effects
+- `POST /api/v1/ramp-schedules/:id/actions/approve-step`
+- `POST /api/v1/ramp-schedules/:id/actions/advance` (body: optional `{ force: true }`)
+- `POST /api/v1/ramp-schedules/:id/actions/rollback` (body: `{ reason: string }`)
+- See flag-ramp Path D for the full action reference (pause, resume, complete, restart)
 
 ## Handoffs
 

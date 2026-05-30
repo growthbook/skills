@@ -37,7 +37,13 @@ Show the rules list. Get the ID of the `force` or `rollout` rule the user wants 
 Confirm:
 - Starting coverage (e.g., `0.05` = 5%)
 - Step progression (e.g., 5% → 25% → 50% → 100%)
-- Hold time at each step: a number in seconds (e.g., `86400` = 1 day) to auto-advance, or `null` to hold until manually advanced in the UI
+- Hold time at each step: a number in seconds (e.g., `86400` = 1 day) to auto-advance, or `null` to hold until manually advanced
+
+**Hold-for-approval steps**: add `holdConditions: { "requiresApproval": true }` to any step that needs human sign-off before the ramp advances. Approval is always the *final* gate — if the step also has an `interval`, the timer must elapse first, then the step waits for an explicit approval call. A pure manual gate (no time component) is `{ "interval": null, "holdConditions": { "requiresApproval": true } }`. Mixed examples:
+- Soak for a day, then require approval: `{ "interval": 86400, "holdConditions": { "requiresApproval": true } }`
+- Require approval only, no time hold: `{ "interval": null, "holdConditions": { "requiresApproval": true } }`
+
+See Path D for how to submit approvals via API once the interval has cleared.
 
 `startActions` should match the rule's **current coverage** (captured in step 1) — this is the state the ramp restores to on rollback.
 
@@ -137,9 +143,62 @@ This stages a `detach` ramp action on the draft. The live schedule is removed wh
 
 ### Path D — Manage a live ramp (post-publish)
 
-After a ramp is published, the `RampSchedule` entity is live and has its own status. The GrowthBook UI provides controls for advancing steps, pausing, and rolling back. For API-based management of a live ramp schedule, contact GrowthBook documentation — live ramp management endpoints are outside the scope of this skill's current coverage.
+After publish, the ramp runs as a live `RampSchedule` entity. Get its ID from the flag's rules (`rampScheduleId` field on the rule), or look it up:
 
-If the user needs to roll back a live ramp immediately: the fastest path is disabling the flag via flag-toggle (kills the whole environment), or editing the rule's `coverage` directly via a new draft and feature-publish.
+```bash
+gb-call GET '/api/v1/ramp-schedules?featureId=<flag-id>'
+# or more precisely:
+gb-call GET '/api/v1/ramp-schedules?ruleId=<rule-id>'
+```
+
+**Check status:**
+```bash
+gb-call GET /api/v1/ramp-schedules/<rs-id>/status
+```
+Returns: current step index, `decision` (`"advance"` / `"hold"` / `"rollback"` / `"waiting"`), health signals, and whether the step is awaiting approval.
+
+**Start the ramp** (if it hasn't started automatically):
+```bash
+gb-call POST /api/v1/ramp-schedules/<rs-id>/actions/start
+```
+
+**Approve a hold-for-approval step** (after the interval has elapsed):
+```bash
+gb-call POST /api/v1/ramp-schedules/<rs-id>/actions/approve-step
+```
+Returns 400 if the interval hasn't cleared yet or other holds are still active — poll `/status` first and only approve when the step is awaiting approval.
+
+**Advance to next step** (override all holds — use for CI pipelines or hard overrides):
+```bash
+echo '{}' | gb-call POST /api/v1/ramp-schedules/<rs-id>/actions/advance -
+# Force past an unsatisfied approval gate (requires canBypassApprovalChecks permission):
+echo '{"force":true}' | gb-call POST /api/v1/ramp-schedules/<rs-id>/actions/advance -
+```
+
+**Pause / Resume:**
+```bash
+gb-call POST /api/v1/ramp-schedules/<rs-id>/actions/pause
+gb-call POST /api/v1/ramp-schedules/<rs-id>/actions/resume
+```
+
+**Roll back** (restores `startActions` state, marks as `rolled-back`):
+```bash
+echo '{"reason":"<description>"}' | gb-call POST /api/v1/ramp-schedules/<rs-id>/actions/rollback -
+```
+
+**Complete immediately** (skip remaining steps, apply `endActions`):
+```bash
+gb-call POST /api/v1/ramp-schedules/<rs-id>/actions/complete
+```
+
+**Restart after rollback:**
+```bash
+gb-call POST /api/v1/ramp-schedules/<rs-id>/actions/restart
+# then start again:
+gb-call POST /api/v1/ramp-schedules/<rs-id>/actions/start
+```
+
+**Emergency kill-switch** (faster than rollback): disable the flag environment via flag-toggle — kills all rules instantly without needing the ramp schedule ID.
 
 ## Guardrails
 
@@ -157,10 +216,23 @@ If the user needs to roll back a live ramp immediately: the fastest path is disa
 
 ## Endpoints used
 
+**Draft (pre-publish):**
 - `GET /api/v2/features/:id` — fetch flag and current rules
 - `PUT /api/v2/features/:id/revisions/new/rules/:ruleId/ramp-schedule` — stage ramp schedule on a draft
-- `DELETE /api/v2/features/:id/revisions/new/rules/:ruleId/ramp-schedule` — stage ramp detach on a draft
-- `POST /api/v2/features/:id/revisions/new/rules` — create new rule with inline `rampSchedule` field
+- `DELETE /api/v2/features/:id/revisions/new/rules/:ruleId/ramp-schedule` — stage ramp detach
+- `POST /api/v2/features/:id/revisions/new/rules` — create rule with inline `rampSchedule`
+
+**Live ramp management:**
+- `GET /api/v1/ramp-schedules` — list (`featureId`, `ruleId`, `status` filters)
+- `GET /api/v1/ramp-schedules/:id/status` — real-time health and decision
+- `POST /api/v1/ramp-schedules/:id/actions/start`
+- `POST /api/v1/ramp-schedules/:id/actions/pause`
+- `POST /api/v1/ramp-schedules/:id/actions/resume`
+- `POST /api/v1/ramp-schedules/:id/actions/advance` (body: optional `{ force: true }`)
+- `POST /api/v1/ramp-schedules/:id/actions/approve-step`
+- `POST /api/v1/ramp-schedules/:id/actions/rollback` (body: `{ reason: string }`)
+- `POST /api/v1/ramp-schedules/:id/actions/restart`
+- `POST /api/v1/ramp-schedules/:id/actions/complete`
 
 ## Handoffs
 
