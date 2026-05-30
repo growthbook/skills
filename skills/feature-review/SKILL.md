@@ -54,15 +54,18 @@ draft → [request-review] → pending-review → [approve]           → approv
    gb-call GET '/api/v2/features/<id>/revisions?status=pending-review'
    ```
 
-   **Neither known, but author name/email known** → filter cross-feature by author. If the user gives a name rather than an email, ask for the email or userId before querying:
+   **Author email or userId known** → filter cross-feature by author:
    ```bash
    gb-call GET '/api/v2/feature-revisions?status=pending-review&author=<email-or-userid>'
    ```
 
-   **Nothing known** → list all pending-review revisions across the org and let the user identify theirs:
+   **Author name known but not email** → fetch all pending-review revisions and filter client-side on `createdBy` matching the name:
    ```bash
    gb-call GET '/api/v2/feature-revisions?status=pending-review'
    ```
+   Each revision has a `createdBy` field (display name or "API"). Filter for entries where `createdBy` contains the name the user gave, then confirm with the user before proceeding.
+
+   **Nothing known** → same broad query, show all results and ask the user to identify theirs.
 
 2. For anything non-trivial, offer to open the GrowthBook UI first — the side-by-side diff and approval controls are clearer than text:
    ```bash
