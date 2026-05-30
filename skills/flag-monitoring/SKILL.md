@@ -1,7 +1,8 @@
 ---
 name: flag-monitoring
 description: Set up a monitored progressive rollout for a GrowthBook feature flag — combining a ramp schedule with guardrail metric monitoring, automated signals, and optional auto-rollback. Also handles safe-rollout rules (enterprise). Use when the user says "roll this out safely", "monitor the rollout with guardrail metrics", "set up a safe rollout", "I want to ramp this with automatic rollback if metrics regress", "configure monitoring on the ramp", "check the monitoring status of this rollout", "approve the next monitored step", or "roll back because guardrails are failing". For unmonitored ramps (just progressive coverage, no metrics), use flag-ramp directly. For simple on/off time windows, use flag-schedule.
-allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
+allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *), Bash(open https://*), Bash(xdg-open https://*)
+
 ---
 
 # flag-monitoring
@@ -20,12 +21,10 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 Before configuring, collect:
 - **Datasource ID** — the datasource that tracks exposure and metric events
 - **Exposure query ID** — which assignment query identifies users in the rollout
-- **Guardrail metric IDs** — at least one metric that must not regress (e.g., error rate, crash rate, conversion rate)
-- **Signal metric IDs** (optional) — metrics to watch as leading indicators, not hard gates
-- **Monitoring mode** — `"auto"` (system monitors and signals) or `"manual"` (system monitors, human decides)
-- **SRM action** — what to do on a Sample Ratio Mismatch: `"rollback"`, `"hold"` (pause), or `"warn"`
-- **No-traffic action** — what to do if no traffic is seen after the grace period: `"rollback"`, `"hold"`, or `"warn"` (default grace period: 24 hours)
-- **Auto-rollback** — `true` to automatically roll back when a guardrail fails, `false` to hold for human review
+- **Guardrail metric IDs** — at least one metric that must not regress (e.g., error rate, crash rate)
+- **Signal metric IDs** (optional) — leading-indicator metrics to watch, not hard gates
+- **SRM action** — what to do on a Sample Ratio Mismatch: `"hold"` (recommended — pause for inspection) or `"rollback"` (aggressive) or `"warn"`
+- **Auto-rollback** (`autoUpdate` in the monitored ramp payload, `autoRollback` in safe-rollout) — `false` recommended to start; `true` means the system rolls back without human approval
 
 ```bash
 # Resolve datasource and exposure query IDs:
@@ -37,31 +36,43 @@ gb-call GET '/api/v1/metrics?datasourceId=<ds-id>'
 
 ## Workflow
 
-### Path A — Add monitoring to an existing ramp schedule
+### Path A — Create a monitored ramp (ramp structure + monitoring together)
 
-Use this when the user has already set up (or wants to set up) a custom ramp via flag-ramp, and now wants monitoring attached.
+Build the full ramp schedule payload with `monitoringConfig` included in a single PUT. This covers both new ramps and updating an existing draft's ramp before it's published.
 
-**1. Set up the ramp structure first (if not done):**
-   Hand off to flag-ramp to create the ramp schedule steps and intervals. Come back here to attach monitoring.
+**1. Collect the ramp steps** — see flag-ramp for step/interval design guidance.
 
-**2. Collect monitoring config** (see Required inputs above).
+**2. Collect monitoring config** (see Required inputs above):
+```bash
+gb-call GET /api/v1/datasources
+gb-call GET '/api/v1/metrics?datasourceId=<ds-id>'
+```
 
-**3. Add monitoring config to the ramp schedule patch:**
+**3. PUT the full payload (steps + monitoring together):**
 
-The `monitoringConfig` is included in the ramp schedule payload sent to:
 ```bash
 echo '{
-  "startDate": null,
-  "cutoffDate": null,
-  "steps": [ ... ],
-  "endActions": [ ... ],
-  "startActions": [ ... ],
+  "steps": [
+    {
+      "interval": 86400,
+      "actions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 0.05 } }]
+    },
+    {
+      "interval": 86400,
+      "actions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 0.25 } }]
+    },
+    {
+      "interval": 86400,
+      "actions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 1.0 } }]
+    }
+  ],
+  "endActions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 1.0 } }],
+  "startActions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": <pre-ramp-coverage> } }],
   "monitoringConfig": {
     "datasourceId": "<ds-id>",
     "exposureQueryId": "<query-id>",
     "guardrailMetricIds": ["<metric-id>"],
     "signalMetricIds": ["<metric-id>"],
-    "monitoringMode": "auto",
     "autoUpdate": false,
     "srmAction": "hold",
     "noTrafficAction": "warn",
@@ -70,6 +81,10 @@ echo '{
   }
 }' | gb-call PUT /api/v2/features/<flag-id>/revisions/new/rules/<rule-id>/ramp-schedule -
 ```
+
+`autoUpdate: false` — monitoring signals require human action to advance or roll back. Set to `true` only if the user explicitly wants automatic rollback on guardrail failure.
+
+Omit `startDate` unless the user explicitly requests a delayed start.
 
 **4. Hand off to feature-publish.**
 
@@ -125,16 +140,29 @@ echo '<payload>' | gb-call POST /api/v2/features/<flag-id>/revisions/new/rules -
 
 **4. Hand off to feature-publish.**
 
-### Path C — Check monitoring status of a live rollout
+### Path C — Check monitoring status or respond to signals
 
-After a monitored ramp or safe-rollout is live, monitoring status is visible in the GrowthBook UI at `<host>/features/<flag-id>`. For API-based status checks on the live ramp entity, consult the GrowthBook documentation — live RampSchedule and SafeRollout status endpoints are outside this skill's current scope.
+Monitoring status and guardrail health are best viewed in the GrowthBook UI — open it directly:
 
-For immediate signals: check if the flag has any active alerts in the GrowthBook UI. If guardrails are failing, the fastest response is:
-- **Manual rollback**: disable the flag via flag-toggle (kills all rules immediately)
-- **Coverage reduction**: edit the rule's coverage downward via a new draft and feature-publish
+```bash
+# macOS:
+open <host>/features/<flag-id>
+# Linux:
+xdg-open <host>/features/<flag-id>
+```
+
+If the user reports guardrails are failing and needs to act immediately:
+- **Emergency stop**: disable the flag in the environment via flag-toggle (kills all rules instantly, no draft needed)
+- **Reduce coverage**: create a new draft, patch the rule's `coverage` downward via flag-ramp, publish — slower but preserves ramp state
+- **Let the system act**: if `autoUpdate: true` was set, the ramp may already be rolling back — check the UI first
 
 ## Guardrails
 
+- **Draft version threading.** If a version number is already in context from a previous write skill in this session, use it explicitly instead of `new`. Fall back to `new` when starting fresh.
+- **Check the target environment is enabled.** If the flag is disabled in the target env, the ramp will do nothing — warn and route to flag-toggle first.
+- **`autoUpdate` vs `autoRollback`**: monitored ramp schedules use `autoUpdate` (in `monitoringConfig`); safe-rollout rules use `autoRollback` (in `safeRolloutFields`). They're different fields on different paths — don't mix them.
+- **`startDate` is optional** — omit it unless the user explicitly wants a delayed start. Most teams start ramps via user action after verifying the publish succeeded.
+- **`cutoffDate` is niche** — don't mention it unless the user asks.
 - **Safe-rollout is enterprise-only.** If the org doesn't have the feature, the API returns an error. Fall back to a monitored ramp schedule (Path A) which is available on all plans.
 - **At least one guardrail metric is required.** Monitoring without a guardrail is just observation — if the user can't provide a guardrail metric, recommend using an unmonitored ramp (flag-ramp) instead.
 - **Metrics must be on the same datasource.** The `datasourceId` in `monitoringConfig` must match the datasource where the guardrail metrics are defined. If they're on different datasources, the API will reject the configuration.

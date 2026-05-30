@@ -12,13 +12,13 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
 ## How ramp schedules work
 
-A ramp schedule is attached to a specific rule on a feature flag. When published:
-1. The schedule begins in `pending` status, advancing to `running` when the `startDate` is reached (or immediately if no startDate).
-2. At each step, the schedule applies a set of **actions** — patches to the rule (typically changing `coverage`).
-3. After each step, the schedule waits for the step's `interval` (in seconds) before advancing to the next step.
-4. A step with `null` interval holds indefinitely until manually advanced.
-5. At the final step, `endActions` are applied (the rule reaches full rollout coverage).
-6. A `cutoffDate` can kill-switch the entire ramp — if reached, the ramp rolls back to `startActions` state.
+A ramp schedule is attached to a specific rule on a feature flag. When published, the ramp begins running immediately — there is no automatic delay unless you explicitly set a `startDate` (uncommon; most teams prefer to trigger the ramp manually after publish via the GrowthBook UI).
+
+At each step, the schedule applies **actions** — patches to the rule, typically changing `coverage`. After a step:
+- If the step has an `interval` (seconds), it auto-advances after that duration.
+- If `interval` is `null`, it holds until a team member manually advances it in the UI.
+
+When all steps complete, `endActions` are applied (typically setting coverage to 1.0). If the ramp is rolled back at any point, `startActions` are applied (restoring the pre-ramp state).
 
 Ramp schedules are staged on a draft revision as `rampActions` and executed atomically at publish time.
 
@@ -36,20 +36,18 @@ Show the rules list. Get the ID of the `force` or `rollout` rule the user wants 
 
 Confirm:
 - Starting coverage (e.g., `0.05` = 5%)
-- Step progression (e.g., 5% → 10% → 25% → 50% → 100%)
-- Hold time at each step — `null` means "wait for manual advance", a number is seconds (e.g., `86400` = 1 day)
-- Optional `startDate` (ISO 8601 UTC) — delay ramp activation
-- Optional `cutoffDate` (ISO 8601 UTC) — kill-switch deadline; ramp rolls back if reached
+- Step progression (e.g., 5% → 25% → 50% → 100%)
+- Hold time at each step: a number in seconds (e.g., `86400` = 1 day) to auto-advance, or `null` to hold until manually advanced in the UI
+
+`startActions` should match the rule's **current coverage** (captured in step 1) — this is the state the ramp restores to on rollback.
 
 **3. Build the ramp schedule payload:**
 
 ```json
 {
-  "startDate": null,
-  "cutoffDate": null,
   "steps": [
     {
-      "interval": null,
+      "interval": 86400,
       "actions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 0.05 } }]
     },
     {
@@ -66,12 +64,14 @@ Confirm:
     }
   ],
   "endActions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 1.0 } }],
-  "startActions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 0.0 } }]
+  "startActions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": <current-coverage> } }]
 }
 ```
 
-`startActions` = the rollback state (applied if cutoffDate is hit or ramp is rolled back manually).
-`endActions` = the final state after all steps complete.
+`endActions` = final state after all steps complete (typically 100% coverage).
+`startActions` = rollback state (the rule's coverage before the ramp started).
+
+Omit `startDate` and `cutoffDate` unless the user explicitly requests them — see Guardrails.
 
 **4. Attach the ramp schedule to the rule via draft:**
 ```bash
@@ -85,24 +85,47 @@ Capture the returned `version`. The ramp schedule is staged as a `rampAction` on
 
 ### Path B — Create a new rule with a ramp schedule in one step
 
-When creating the rule and ramp together:
+When creating the rule and ramp together, fetch available `hashAttribute` candidates first (required for rollout rules):
+
+```bash
+gb-call GET '/api/v1/attributes?projectId=<flag-project-id>'
+```
+
+Validate the rule's `value` against the flag's `valueType` (captured from the flag fetch). Then post:
 
 ```bash
 echo '{
   "rule": {
     "type": "rollout",
-    "value": "true",
+    "value": "<on-value>",
     "coverage": 0.05,
-    "hashAttribute": "id",
+    "hashAttribute": "<hash-attr-id>",
     "enabled": true,
     "allEnvironments": false,
-    "environments": ["production"]
+    "environments": ["<env-id>"]
   },
-  "rampSchedule": { ... }
+  "rampSchedule": {
+    "steps": [
+      {
+        "interval": 86400,
+        "actions": [{ "targetType": "feature-rule", "targetId": "new", "patch": { "coverage": 0.05 } }]
+      },
+      {
+        "interval": 86400,
+        "actions": [{ "targetType": "feature-rule", "targetId": "new", "patch": { "coverage": 0.25 } }]
+      },
+      {
+        "interval": 86400,
+        "actions": [{ "targetType": "feature-rule", "targetId": "new", "patch": { "coverage": 1.0 } }]
+      }
+    ],
+    "endActions": [{ "targetType": "feature-rule", "targetId": "new", "patch": { "coverage": 1.0 } }],
+    "startActions": [{ "targetType": "feature-rule", "targetId": "new", "patch": { "coverage": 0.0 } }]
+  }
 }' | gb-call POST /api/v2/features/<flag-id>/revisions/new/rules -
 ```
 
-The `rampSchedule` field is accepted on rule creation and wires the schedule atomically.
+Use `"targetId": "new"` as a placeholder in the ramp actions — the server replaces it with the actual rule ID on creation.
 
 ### Path C — Remove a ramp schedule from a rule
 
@@ -120,14 +143,17 @@ If the user needs to roll back a live ramp immediately: the fastest path is disa
 
 ## Guardrails
 
+- **Draft version threading.** If a version number is already in context from a previous write skill in this session, use it explicitly instead of `new`. Fall back to `new` when starting fresh.
 - **Ramp schedules apply only to `force` and `rollout` rules.** They don't work on `experiment-ref` or `safe-rollout` rules.
-- **`startActions` is the rollback state.** Set it to the coverage the rule should have if the ramp is rolled back (usually `0` or the pre-ramp coverage). If not set, rollback is undefined.
-- **Steps with `null` interval hold until manually advanced.** These are good for human-approved gates ("I'll advance this manually after checking metrics"). Steps with an interval auto-advance after the duration.
-- **`cutoffDate` is an automatic kill-switch.** If this date is reached, the ramp rolls back to `startActions` state. Use it to bound the blast radius of a ramp that might get stuck.
+- **`startActions` must match the rule's pre-ramp coverage.** Capture it in step 1 and use it as the rollback state. Don't default to 0 unless the rule was at 0 before the ramp.
+- **Steps with `null` interval hold until manually advanced in the UI.** Useful for human-gated checkpoints. Steps with an interval auto-advance.
+- **`startDate` is optional** — the ramp starts immediately on publish if omitted. Only ask for it if the user specifically wants a delayed start; most teams prefer to trigger manually after verifying the publish succeeded.
+- **`cutoffDate` is a niche safety net.** Only mention it if the user asks — it's a deadline that auto-rolls the ramp back if reached. Don't include it by default.
 - **Coverage patches on steps must be within 0–1.** The server validates this at publish time.
-- **For monitored ramps (guardrail metrics, auto-rollback signals), use flag-monitoring.** This skill handles unmonitored structural ramps. flag-monitoring builds on this skill's ramp schedule with `monitoringConfig`.
-- **Ramp actions are staged on the draft.** Nothing changes until the draft publishes. If the draft is discarded, the ramp is never created.
-- **One ramp schedule per rule.** A rule can only have one active ramp schedule. Adding a new one replaces any existing schedule.
+- **Check the target environment is enabled.** If the flag is disabled in the target env, the ramp will do nothing — warn and route to flag-toggle first.
+- **For monitored ramps (guardrail metrics, auto-rollback signals), use flag-monitoring.**
+- **Ramp actions are staged on the draft.** Nothing changes until published. If the draft is discarded, the ramp is never created.
+- **One ramp schedule per rule.** Adding a new one replaces any existing schedule.
 
 ## Endpoints used
 
