@@ -90,11 +90,16 @@ Each flag gets a `staleReason`:
 
 | `staleReason` | Meaning | Action |
 | --- | --- | --- |
-| `launched` | Rules deliver 100% to one variation; looks like a shipped feature | Safe to clean up — inline the winning value |
-| `abandoned` | Draft open with no recent activity | Check the draft; discard or continue |
-| `unused` | No rules, disabled in all envs | Safe to remove |
-| `never-stale` | Explicitly excluded from stale detection | Skip — permanent intentional flag |
-| `has-rules` / `active-experiment` | Still in use | Don't touch |
+| `rules-one-sided` | All rules route 100% of traffic to a single value — looks like a shipped feature | Safe to clean up — inline the winning value |
+| `no-rules` | Flag has no rules at all | Safe to remove if `defaultValue` is already inlined |
+| `toggled-off` | Disabled in all environments | Safe to remove if no longer needed |
+| `abandoned-draft` | Has a draft open with no recent activity | Check the draft; discard or continue |
+| `never-stale` | Explicitly excluded from stale detection | Skip — permanent intentional flag (kill switch, ops toggle) |
+| `recently-updated` | Updated within the last two weeks | Not stale yet — revisit later |
+| `active-draft` | Has an active draft revision in progress | Someone is working on it — leave alone |
+| `has-dependents` | Other flags list this flag as a prerequisite | Cannot remove safely without updating dependents — use flag-graph first |
+| `active-experiment` | Linked to a running experiment | Stop the experiment first via experiment-stop |
+| `has-rules` | Has active rules that aren't one-sided | Still in use |
 
 **Step C-4: Present the report.**
 

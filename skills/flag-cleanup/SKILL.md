@@ -1,6 +1,6 @@
 ---
 name: flag-cleanup
-description: Archive or delete a stale GrowthBook feature flag, walking the user through inlining the flag's effective value at call sites in the codebase before removal. Use when the user says "delete this flag", "remove this stale flag", "clean up flag X", "archive this flag", "we don't need this flag anymore", or "get rid of this flag and its experiment-ref rule". For finding stale flags first, use flag-discovery. For editing rules instead of removing the flag, use flag-targeting. For stopping an experiment that uses the flag, use experiment-stop.
+description: Archive or delete a stale GrowthBook feature flag, walking the user through inlining the flag's effective value at call sites in the codebase before removal. Use when the user says "delete this flag", "remove this stale flag", "clean up flag X", "archive this flag", "we don't need this flag anymore", or "get rid of this flag and its experiment-ref rule". For finding stale flags first, use flag-search. For editing rules instead of removing the flag, use flag-targeting. For stopping an experiment that uses the flag, use experiment-stop.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
 ---
 
@@ -14,7 +14,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
 Collect from the user before starting. Prompt for what's missing.
 
-- **Flag ID** — kebab-case key. If the user gives a description, route to `flag-discovery` first to resolve.
+- **Flag ID** — kebab-case key. If the user gives a description, route to `flag-search` first to resolve.
 - **Action** — `archive` (reversible) or `delete` (permanent; includes archive). Inferred from wording: "archive" / "disable" → archive; "delete" / "remove" / "clean up" / "get rid of" → delete. Confirm before mutating.
 
 ## Workflow
@@ -40,7 +40,7 @@ gb-call GET /api/v2/features/<flag-id>
 
 Capture from the response: `archived` (boolean), `defaultValue`, `valueType`, `environmentSettings` (which envs are enabled), `rules` (the full array, including any `experiment-ref` rules), `holdout` (informational), `project`.
 
-If 404, halt: "no flag with id `<flag-id>`." Suggest `flag-discovery` to list flags.
+If 404, halt: "no flag with id `<flag-id>`." Suggest `flag-search` to list flags.
 
 **Run the safety checks. Halt if any of these fire:**
 

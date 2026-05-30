@@ -1,18 +1,12 @@
 ---
 name: flag-monitoring
-description: Set up a monitored progressive rollout for a GrowthBook feature flag — combining a ramp schedule with guardrail metric monitoring, automated signals, and optional auto-rollback. Also handles safe-rollout rules (enterprise). Use when the user says "roll this out safely", "monitor the rollout with guardrail metrics", "set up a safe rollout", "I want to ramp this with automatic rollback if metrics regress", "configure monitoring on the ramp", "check the monitoring status of this rollout", "approve the next monitored step", or "roll back because guardrails are failing". For unmonitored ramps (just progressive coverage, no metrics), use flag-ramp directly. For simple on/off time windows, use flag-schedule.
+description: Set up a monitored progressive rollout ("safe rollout") for a GrowthBook feature flag — combining a ramp schedule with guardrail metric monitoring, automated signals, and optional auto-rollback. Use when the user says "roll this out safely", "monitor the rollout with guardrail metrics", "set up a safe rollout", "I want to ramp this with automatic rollback if metrics regress", "configure monitoring on the ramp", "check the monitoring status of this rollout", "approve the next monitored step", or "roll back because guardrails are failing". For unmonitored ramps (just progressive coverage, no metrics), use flag-ramp directly. For simple on/off time windows, use flag-schedule.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *), Bash(open https://*), Bash(xdg-open https://*)
-
 ---
 
 # flag-monitoring
 
-Set up and manage a monitored progressive rollout for a GrowthBook feature flag. This skill orchestrates flag-ramp's structural ramp schedule with a monitoring configuration that watches guardrail metrics at each step and can signal (or automatically trigger) a rollback if regressions are detected.
-
-Two mechanisms are available:
-
-- **Monitored ramp schedule** — a standard ramp schedule (from flag-ramp) with `monitoringConfig` attached. Works with any `force` or `rollout` rule. Monitoring signals are advisory unless `autoUpdate: true` is set.
-- **Safe-rollout rule** (enterprise) — a dedicated rule type that bundles a fixed ramp-up (10% → 25% → 50% → 75% → 100% over the first 25% of a configured monitoring duration) with automated guardrail monitoring and optional auto-rollback. Simpler to configure but less flexible than a custom ramp.
+Set up and manage a monitored progressive rollout (also called a "safe rollout") for a GrowthBook feature flag. A safe rollout is a standard `rollout` rule with a multi-step ramp schedule and `monitoringConfig` attached — the monitoring watches guardrail metrics at each step and can signal or automatically trigger a rollback if regressions are detected.
 
 All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It needs `GB_API_KEY` and `GB_EMAIL` set in env or written to `~/.config/growthbook/.env` by `/growthbook:setup`.
 
@@ -88,59 +82,7 @@ Omit `startDate` unless the user explicitly requests a delayed start.
 
 **4. Hand off to feature-publish.**
 
-### Path B — Create a safe-rollout rule (enterprise)
-
-Safe-rollout rules are a self-contained rule type that bundles a fixed ramp-up progression with automated monitoring. No separate ramp schedule entity is needed.
-
-**1. Fetch the flag:**
-```bash
-gb-call GET /api/v2/features/<flag-id>
-```
-
-**2. Collect safe-rollout configuration:**
-- `controlValue` — the baseline value (what users currently get)
-- `variationValue` — the new value being rolled out
-- `hashAttribute` — the attribute to split traffic on (e.g., `id`)
-- `trackingKey` — optional; defaults to flag ID
-- `datasourceId`, `exposureQueryId`, `guardrailMetricIds` — monitoring setup (see above)
-- `maxDuration` — how long the full rollout should take: `{ "amount": 4, "unit": "weeks" }`
-- `autoRollback` — `true` to automatically roll back on guardrail failure
-- Custom `rampUpSchedule` (optional) — override the default 10/25/50/75/100% steps
-
-**3. Build the payload and add the rule:**
-```json
-{
-  "rule": {
-    "type": "safe-rollout",
-    "controlValue": "<string>",
-    "variationValue": "<string>",
-    "hashAttribute": "id",
-    "trackingKey": "<optional>",
-    "enabled": true,
-    "allEnvironments": false,
-    "environments": ["production"],
-    "description": "<optional>"
-  },
-  "safeRolloutFields": {
-    "datasourceId": "<ds-id>",
-    "exposureQueryId": "<query-id>",
-    "guardrailMetricIds": ["<metric-id>"],
-    "maxDuration": { "amount": 4, "unit": "weeks" },
-    "autoRollback": true,
-    "rampUpSchedule": {
-      "enabled": false
-    }
-  }
-}
-```
-
-```bash
-echo '<payload>' | gb-call POST /api/v2/features/<flag-id>/revisions/new/rules -
-```
-
-**4. Hand off to feature-publish.**
-
-### Path C — Check monitoring status or respond to signals
+### Path B — Check monitoring status or respond to signals
 
 Before taking any action, open the feature page — it shows ramp step progress, guardrail and signal metric health, experiment-level health checks (SRM, multiple exposures, no traffic), and full metric performance drilldowns with effect sizes and confidence intervals. The API `/status` endpoint gives you the `decision`, but the UI gives you the context to make it:
 
@@ -192,17 +134,15 @@ For the full live ramp management action reference (pause, resume, complete, res
 
 - **Draft version threading.** If a version number is already in context from a previous write skill in this session, use it explicitly instead of `new`. Fall back to `new` when starting fresh.
 - **Check the target environment is enabled.** If the flag is disabled in the target env, the ramp will do nothing — warn and route to flag-toggle first.
-- **`autoUpdate` vs `autoRollback`**: monitored ramp schedules use `autoUpdate` (in `monitoringConfig`); safe-rollout rules use `autoRollback` (in `safeRolloutFields`). Different fields on different paths — don't mix them. Both default to `true` (auto-rollback on failure).
+- **`autoUpdate`** controls auto-rollback in the monitored ramp schedule's `monitoringConfig`. Defaults to `true` (rolls back automatically on guardrail failure).
 - **`startDate` is optional** — omit it unless the user explicitly wants a delayed start. Most teams start ramps via user action after verifying the publish succeeded.
 - **`cutoffDate` is niche** — don't mention it unless the user asks.
-- **Safe-rollout is enterprise-only.** If the org doesn't have the feature, the API returns an error. Fall back to a monitored ramp schedule (Path A) which is available on all plans.
+- **Draft version threading.** If a version number is already in context from a previous write skill in this session, use it explicitly instead of `new`. Fall back to `new` when starting fresh.
 - **At least one guardrail metric is required.** Monitoring without a guardrail is just observation — if the user can't provide a guardrail metric, recommend using an unmonitored ramp (flag-ramp) instead.
 - **Metrics must be on the same datasource.** The `datasourceId` in `monitoringConfig` must match the datasource where the guardrail metrics are defined. If they're on different datasources, the API will reject the configuration.
-- **`autoRollback: true` means the system rolls back without human approval.** Confirm the user understands this — an unexpected regression detection can disable a feature in production automatically. Recommend starting with `autoRollback: false` (hold for human review) until the team trusts the metric.
-- **For monitored steps with `holdConditions.requiresApproval`:** each step pause requires explicit human sign-off before the ramp advances. This is the highest-safety configuration but requires someone watching the rollout.
-- **Default safe-rollout ramp is 10% → 25% → 50% → 75% → 100%.** This progression covers the first 25% of `maxDuration`. If the user wants custom steps, provide `rampUpSchedule.enabled: true` with a `steps` array.
-- **SRM action defaults matter.** `"rollback"` on SRM is aggressive — a brief traffic imbalance triggers a full rollback. `"hold"` is safer: the ramp pauses for human inspection. Recommend `"hold"` for SRM unless the user explicitly wants aggressive protection.
-- **Monitored ramp and safe-rollout are mutually exclusive on a rule.** A rule can only have one monitoring approach. Don't try to attach a monitored ramp schedule to a rule that's already a `safe-rollout` type.
+- **`autoUpdate: true` means the system rolls back without human approval.** Mention `autoUpdate: false` only if the user wants to control monitoring cadence manually or is concerned about query costs.
+- **For monitored steps with `holdConditions.requiresApproval`:** each step pause requires explicit human sign-off before the ramp advances.
+- **SRM action defaults matter.** `"rollback"` on SRM is aggressive. `"hold"` is safer — the ramp pauses for human inspection. Recommend `"hold"` for SRM unless the user explicitly wants aggressive protection.
 
 ## Cross-links
 
@@ -219,7 +159,6 @@ This skill orchestrates:
 - `GET /api/v1/datasources` — resolve datasource IDs
 - `GET /api/v1/metrics` — resolve guardrail and signal metric IDs
 - `PUT /api/v2/features/:id/revisions/new/rules/:ruleId/ramp-schedule` — create/update ramp schedule with monitoringConfig
-- `POST /api/v2/features/:id/revisions/new/rules` — add safe-rollout rule
 
 **Live ramp management:**
 - `GET /api/v1/ramp-schedules` — list (`featureId`, `ruleId` filters)

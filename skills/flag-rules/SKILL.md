@@ -14,11 +14,8 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
 | Type | What it does | Skill |
 | --- | --- | --- |
-| `force` | Serve a specific value to matched users | flag-targeting |
-| `rollout` | Serve a value to a random % of users | flag-targeting |
+| `force` / `rollout` | Serve a specific value, optionally to a random % of users. `rollout` is the same type as `force` but with `coverage < 1` and a required `hashAttribute` — the server auto-flips between the two based on effective coverage. | flag-targeting |
 | `experiment-ref` | Run an A/B test via a linked experiment | flag-experiment |
-| `experiment` | Inline experiment (no separate experiment object) | flag-experiment |
-| `safe-rollout` | Gradual release with automated guardrail monitoring (enterprise) | flag-monitoring |
 
 Rules evaluate **top-to-bottom, first match wins**. Order matters.
 
@@ -53,7 +50,7 @@ Ask the user what they're trying to accomplish and route:
 | "Run an A/B test" | flag-experiment |
 | "Turn this on at 9am, off at 5pm" | flag-schedule |
 | "Gradually increase traffic from 5% to 100%" | flag-ramp |
-| "Release safely with guardrail metrics" | flag-monitoring |
+| "Gradually release with guardrail metric monitoring" | flag-monitoring |
 | "Only if feature Y is enabled" (whole flag) | flag-prerequisites |
 | "Only if feature Y is enabled" (one rule) | flag-targeting |
 
@@ -93,8 +90,8 @@ Remind the user that evaluation is top-to-bottom, first match wins — rules hig
 - **Rules evaluate in order; position matters.** A broad rule (e.g., 50% rollout with no condition) placed first will match before a more specific rule below it. Surface this when the user adds or reorders.
 - **Rule ID is a string UUID (`fr_...`), not a position number.** Always resolve to the UUID from the `rules` array before calling edit/delete/reorder endpoints.
 - **Reorder requires the complete array.** Missing a rule ID in the reorder payload will cause an error or lose rules. Fetch the current `rules` array, reorder in memory, then send all IDs.
+- **Draft version threading.** If a version number is already in context from a previous write skill in this session, use it explicitly instead of `new`. Fall back to `new` when starting fresh.
 - **`version=new` is the canonical draft pattern.** Don't manually POST `/revisions` first — the `new` magic creates or reuses a draft atomically.
-- **safe-rollout rules can only be deleted here, not edited.** For editing a safe-rollout rule's monitoring config, use flag-monitoring.
 - **experiment-ref rules can only be deleted here.** For editing an experiment-ref rule's targeting conditions or scope, use flag-targeting. For changing the linked experiment, warn the user and use flag-experiment.
 
 ## Endpoints used

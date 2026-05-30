@@ -1,25 +1,32 @@
 ---
 name: flag-experiment
-description: Add an experiment-ref rule to a GrowthBook feature flag to run an A/B test through that flag, or wire up an inline experiment rule. Use when the user says "run an experiment through this flag", "add an A/B test to flag X", "link experiment Y to this flag", "set up variations on this flag for an experiment", "add an experiment-ref rule", or "wire up this experiment to the flag". For launching a full new experiment end-to-end, use experiment-launch. For editing the targeting conditions or scope of an existing experiment rule, use flag-targeting. For stopping an experiment and cleaning up its rule, use experiment-stop then flag-rules.
+description: Add an experiment-ref rule to a GrowthBook feature flag to run an A/B test through that flag. Use when the user says "run an experiment through this flag", "add an A/B test to flag X", "link experiment Y to this flag", "set up variations on this flag for an experiment", "add an experiment-ref rule", or "wire up this experiment to the flag". For launching a full new experiment end-to-end, use experiment-launch. For editing the targeting conditions or scope of an existing experiment rule, use flag-targeting. For stopping an experiment and cleaning up its rule, use experiment-stop then flag-rules.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
 ---
 
 # flag-experiment
 
-Add an experiment rule to a GrowthBook feature flag. Two rule types serve this purpose:
-
-- **`experiment-ref`** — links to a separately-managed GrowthBook experiment object. The experiment is the source of truth for variations, metrics, and analysis. This is the standard path.
-- **`experiment` (inline)** — embeds the full experiment configuration inside the flag rule itself. Use only for lightweight cases where a separate experiment object isn't needed; the experiment-ref path is preferred.
+Add an `experiment-ref` rule to a GrowthBook feature flag. This links a flag rule to a separately-managed GrowthBook experiment object — the experiment is the source of truth for variations, metrics, and analysis.
 
 All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It needs `GB_API_KEY` and `GB_EMAIL` set in env or written to `~/.config/growthbook/.env` by `/growthbook:setup`.
 
 ## Workflow
 
-### Path A — Add an experiment-ref rule (standard path)
+### Path A — Add an experiment-ref rule
 
 Use this when the user has an existing GrowthBook experiment or wants to launch one through a flag.
 
-**1. Confirm the experiment exists:**
+**1. Fetch the flag and confirm the experiment exists:**
+
+```bash
+gb-call GET /api/v2/features/<flag-id>
+```
+
+Capture `valueType` — you'll need it to map variation values correctly.
+
+```bash
+gb-call GET /api/v1/experiments/<experiment-id>
+```
 
 ```bash
 gb-call GET /api/v1/experiments/<experiment-id>
@@ -64,34 +71,7 @@ echo '<payload>' | gb-call POST /api/v2/features/<flag-id>/revisions/new/rules -
 
 Capture the returned `version`. Hand off to feature-publish.
 
-### Path B — Add an inline experiment rule (advanced)
-
-Use only when the user explicitly doesn't want a separate experiment object.
-
-Inline experiment rules (`type: "experiment"`) embed the full A/B test config — tracking key, hash attribute, variations with weights, and optional metrics. They're harder to analyze in the GrowthBook UI and don't appear in the experiments list.
-
-Key fields beyond the base rule fields:
-
-```json
-{
-  "type": "experiment",
-  "trackingKey": "<string — unique key for event tracking>",
-  "hashAttribute": "<attribute to split on, e.g. id>",
-  "coverage": 0.5,
-  "values": [
-    { "value": "false", "weight": 0.5, "name": "Control" },
-    { "value": "true",  "weight": 0.5, "name": "Treatment" }
-  ],
-  "goalMetrics": ["<metric-id>"],
-  "guardrailMetrics": ["<metric-id>"]
-}
-```
-
-```bash
-echo '<payload>' | gb-call POST /api/v2/features/<flag-id>/revisions/new/rules -
-```
-
-### Path C — Edit an existing experiment-ref rule's targeting
+### Path B — Edit an existing experiment-ref rule's targeting
 
 The server allows patching `enabled`, `condition`, `savedGroups`, `prerequisites`, scope (`allEnvironments`/`environments`), and `description` on an experiment-ref rule. Use flag-targeting for this — it has the full conditions decision tree and the warn-and-confirm guardrails for the sensitive fields.
 
@@ -99,7 +79,7 @@ The server allows patching `enabled`, `condition`, `savedGroups`, `prerequisites
 
 ## Guardrails
 
-- **Experiment-ref is the preferred path.** Inline experiment rules bypass the GrowthBook experiment analysis UI and don't appear in experiment lists. Only use inline when the user explicitly opts out of experiment-object tracking.
+- **Draft version threading.** If a version number is already in context from a previous write skill in this session, use it explicitly instead of `new`. Fall back to `new` when starting fresh.
 - **`variations` order must match the experiment's variation order.** If the order is wrong, variation assignments will be mismatched — the control users will see the treatment value and vice versa. Always confirm variation order by reading the experiment before building the payload.
 - **Auto-fill of `variationId` is available but risky.** If all `variationId` fields are omitted, the server fills them from the experiment. Use this only when the experiment has exactly the same number of variations as the values the user specified — otherwise the server may silently mismatch.
 - **Editing `experimentId` or `variations` on an existing experiment-ref rule requires warn-and-confirm.** These fields are API-allowed but cause flag/experiment drift. Always surface the risk and require explicit confirmation before patching.
@@ -109,9 +89,9 @@ The server allows patching `enabled`, `condition`, `savedGroups`, `prerequisites
 
 ## Endpoints used
 
+- `GET /api/v2/features/:id` — fetch flag state, valueType, and current rules
 - `GET /api/v1/experiments/:id` — fetch experiment and its variations
-- `GET /api/v2/features/:id` — fetch flag state and current rules
-- `POST /api/v2/features/:id/revisions/new/rules` — add the experiment-ref or inline experiment rule
+- `POST /api/v2/features/:id/revisions/new/rules` — add the experiment-ref rule
 
 ## Handoffs
 
