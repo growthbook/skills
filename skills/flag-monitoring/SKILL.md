@@ -24,7 +24,7 @@ Before configuring, collect:
 - **Guardrail metric IDs** — at least one metric that must not regress (e.g., error rate, crash rate)
 - **Signal metric IDs** (optional) — leading-indicator metrics to watch, not hard gates
 - **SRM action** — what to do on a Sample Ratio Mismatch: `"hold"` (recommended — pause for inspection) or `"rollback"` (aggressive) or `"warn"`
-- **Auto-rollback** (`autoUpdate` in the monitored ramp payload, `autoRollback` in safe-rollout) — `false` recommended to start; `true` means the system rolls back without human approval
+- **Auto-rollback** (`autoUpdate` in the monitored ramp payload, `autoRollback` in safe-rollout) — `true` means the system rolls back without human approval on guardrail failure; `false` holds for human review. Default to `true` unless the user has concerns about query cost or wants to control the cadence of monitoring snapshots manually
 
 ```bash
 # Resolve datasource and exposure query IDs:
@@ -82,7 +82,7 @@ echo '{
 }' | gb-call PUT /api/v2/features/<flag-id>/revisions/new/rules/<rule-id>/ramp-schedule -
 ```
 
-`autoUpdate: false` — monitoring signals require human action to advance or roll back. Set to `true` only if the user explicitly wants automatic rollback on guardrail failure.
+`autoUpdate: true` is the default — the system automatically rolls back on guardrail failure. Mention `autoUpdate: false` only if the user wants to control monitoring cadence manually or is concerned about query costs.
 
 Omit `startDate` unless the user explicitly requests a delayed start.
 
@@ -160,7 +160,7 @@ If the user reports guardrails are failing and needs to act immediately:
 
 - **Draft version threading.** If a version number is already in context from a previous write skill in this session, use it explicitly instead of `new`. Fall back to `new` when starting fresh.
 - **Check the target environment is enabled.** If the flag is disabled in the target env, the ramp will do nothing — warn and route to flag-toggle first.
-- **`autoUpdate` vs `autoRollback`**: monitored ramp schedules use `autoUpdate` (in `monitoringConfig`); safe-rollout rules use `autoRollback` (in `safeRolloutFields`). They're different fields on different paths — don't mix them.
+- **`autoUpdate` vs `autoRollback`**: monitored ramp schedules use `autoUpdate` (in `monitoringConfig`); safe-rollout rules use `autoRollback` (in `safeRolloutFields`). Different fields on different paths — don't mix them. Both default to `true` (auto-rollback on failure).
 - **`startDate` is optional** — omit it unless the user explicitly wants a delayed start. Most teams start ramps via user action after verifying the publish succeeded.
 - **`cutoffDate` is niche** — don't mention it unless the user asks.
 - **Safe-rollout is enterprise-only.** If the org doesn't have the feature, the API returns an error. Fall back to a monitored ramp schedule (Path A) which is available on all plans.
