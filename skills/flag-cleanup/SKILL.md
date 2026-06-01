@@ -73,6 +73,9 @@ If 404, halt: "no flag with id `<flag-id>`." Suggest `flag-search` to list flags
   ```
   If any returns `status: "running"`, halt with the same message.
 
+  **Temporary rollout check.** While fetching linked experiments, also note any with `status: "stopped"` AND `enableTemporaryRollout: true` — these are not a blocker (the experiment is stopped), but step 2 must use the winner value as the inline replacement. Surface a reminder:
+  > "Temporary rollout is active on experiment `<exp-id>` — all users currently see the winner value. Step 2 will use the winner value as the inline replacement, not `defaultValue`."
+
 - **Draft experiment referencing the flag.** Lower-priority than running, but worth a warn-and-confirm. Reuse the bulk query with a different status filter:
   ```bash
   gb-call GET '/api/v1/experiments?trackingKey=<flag-id>&status=draft'
@@ -92,9 +95,23 @@ If 404, halt: "no flag with id `<flag-id>`." Suggest `flag-search` to list flags
 
 ### 2. Compute the inline-replacement value and detect behavior changes
 
-After archival, **every rule stops evaluating** — the flag returns `defaultValue` for all callers, in all environments, regardless of what its rules used to do. So the answer to "what should we inline at call sites?" is simple: `defaultValue`.
+After archival, **every rule stops evaluating** — the flag returns `defaultValue` for all callers. The inline replacement value is usually `defaultValue`, but not always — see the temporary rollout case below.
 
-For `valueType: "json"`, surface the raw JSON-encoded string and let the user adapt the inline shape to fit their code's call signature (they may need to parse, destructure, or wrap it depending on how the flag was previously used).
+**Check for an active temporary rollout first.** For each `experiment-ref` rule in the flag, fetch the linked experiment:
+
+```bash
+gb-call GET /api/v1/experiments/<experiment-id>
+```
+
+If `experiment.status === "stopped"` AND `experiment.enableTemporaryRollout === true`:
+- The experiment's `releasedVariationId` tells you which variation is serving 100% of traffic.
+- Find that variation's value in the experiment-ref rule's `variations` array.
+- **That value — not `defaultValue` — is what all users currently see.**
+- Use it as the inline replacement value. Warn the user clearly:
+
+  > "Temporary rollout is active on this flag. All users currently see the winner value `<winner_value>`. After cleanup, all users will shift to `defaultValue: <default_value>`. If these differ, inlining `<winner_value>` is the correct replacement — not `<default_value>`."
+
+For `valueType: "json"`, surface the raw JSON-encoded string and let the user adapt the inline shape.
 
 **The real question this step exists to answer is: does cleanup change behavior in production?**
 
@@ -102,8 +119,7 @@ Walk the `rules` array and flag anything that previously diverged from `defaultV
 
 - A `force` rule serving a different value to a targeted segment.
 - An active `rollout` rule (coverage > 0) — even one with no condition.
-- An `experiment-ref` rule that "won" with a non-default winning variation (check the linked experiment's `resultSummary` if possible).
-- A `safe-rollout` rule (its `variationValue` is what's served when the rollout matches).
+- An `experiment-ref` rule: fetch the linked experiment. If stopped with temporary rollout, the winner value is the divergence (handled above). If still assigning traffic normally (stopped experiment, no temporary rollout), users are split across variations — archiving shifts everyone to `defaultValue`, which is a change for treatment-group users.
 
 Surface a table:
 
