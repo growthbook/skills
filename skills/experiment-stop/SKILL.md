@@ -104,10 +104,10 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
      Derive `<host>` from `GB_API_URL` by swapping `api.` → `app.` (matches `experiment-launch`'s convention; on the default cloud host this produces `https://app.growthbook.io`).
    **What happens to the flag?** Surface the disposition clearly based on what was sent:
 
-   **With temporary rollout (`enableTemporaryRollout: true`):** traffic is already routed to the winner via the existing experiment-ref rule. The flag is "shipping" — nothing needs to change immediately. When ready to clean up:
-   - **Option A — Permanent rule:** remove the experiment-ref rule via `flag-rules`, add a permanent force rule serving the winner value via `flag-targeting`, then optionally archive the experiment.
-   - **Option B — Clean up entirely:** if the feature is fully shipped and will be inlined in code, use `flag-cleanup` to walk through code cleanup and archive/delete the flag.
-   - To turn off the temporary rollout first (roll back): `echo '{"enableTemporaryRollout": false}' | gb-call POST /api/v1/experiments/<experiment-id>/modify-temporary-rollout -`
+   **With temporary rollout (`enableTemporaryRollout: true`):** the winner is live — traffic is already routed to it via the existing experiment-ref rule. No further action required until the team decides to clean up the flag (which can happen days or weeks later). When ready:
+   - **Convert to permanent rule:** remove the experiment-ref rule via `flag-rules`, add a permanent force rule for the winner via `flag-targeting`.
+   - **Clean up entirely:** if the feature will be inlined in code, use `flag-cleanup` to walk through code cleanup and archive/delete the flag.
+   - **Roll back:** turn off the temporary rollout first (`echo '{"enableTemporaryRollout": false}' | gb-call POST /api/v1/experiments/<experiment-id>/modify-temporary-rollout -`), then remove the experiment-ref rule via `flag-rules`.
 
    **Without temporary rollout:** the experiment-ref rule is still on the flag, routing traffic to a stopped experiment (users will get the control value). The flag needs attention:
    - **Option A — Ship the winner:** set `defaultValue` to the winner's value via `flag-default-value`, then remove the experiment-ref rule via `flag-rules`. Or use `flag-targeting` to add a permanent force rule serving the winner, then remove the experiment-ref rule.
