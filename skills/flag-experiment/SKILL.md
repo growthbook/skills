@@ -28,13 +28,9 @@ Capture `valueType` — you'll need it to map variation values correctly.
 gb-call GET /api/v1/experiments/<experiment-id>
 ```
 
-```bash
-gb-call GET /api/v1/experiments/<experiment-id>
-```
-
 Capture the experiment's `variations` array. Each variation has an `id` (e.g., `var_abc123`) and a `name`. You'll need these to wire up the rule.
 
-If the user doesn't have an experiment yet, route to `experiment-launch` first — it handles experiment creation and flag wiring end-to-end.
+If the user doesn't have an experiment yet, route to `experiment-launch` — it handles experiment creation AND flag wiring end-to-end. Importantly, if a flag already exists, `experiment-launch` will detect it (via a 409 on create, then the reuse path) and wire the experiment to the existing flag rather than creating a new one. Tell the user: "experiment-launch will pick up your existing flag — just give it the same flag key."
 
 **2. Map variation values:**
 

@@ -47,7 +47,8 @@ Ask the user what they're trying to accomplish and route:
 | --- | --- |
 | "Serve X to users matching condition Y" | flag-targeting |
 | "Roll out to N% of users" | flag-targeting |
-| "Run an A/B test" | flag-experiment |
+| "Run an A/B test" (experiment already exists) | flag-experiment |
+| "Run an A/B test" (starting from scratch) | experiment-launch — it creates the experiment AND reuses or creates the flag end-to-end |
 | "Turn this on at 9am, off at 5pm" | flag-schedule |
 | "Gradually increase traffic from 5% to 100%" | flag-ramp |
 | "Gradually release with guardrail metric monitoring" | flag-monitoring |

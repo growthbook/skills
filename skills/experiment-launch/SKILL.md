@@ -1,6 +1,6 @@
 ---
 name: experiment-launch
-description: Launch a GrowthBook A/B test end-to-end via the REST API — create the experiment, prep the feature flag, wire the experiment-ref rule, and start the experiment. Use when the user says "launch this experiment", "create the experiment", "wire up the A/B test", "kick off the test", "set up X as an experiment in GrowthBook", or "start the experiment for flag Y". For designing the spec first, use experiment-design. For stopping a running experiment, use experiment-stop. For interpreting results, use experiment-analyze.
+description: Launch a GrowthBook A/B test end-to-end via the REST API — create the experiment, prep the feature flag, wire the experiment-ref rule, and start the experiment. Use when the user says "launch this experiment", "create the experiment", "wire up the A/B test", "kick off the test", "set up X as an experiment in GrowthBook", "start the experiment for flag Y", or "I already have a flag and want to run an experiment on it". Works for both experiment-first (creates the flag) and flag-first (detects the existing flag via the reuse path and wires the experiment to it). For designing the spec first, use experiment-design. For stopping a running experiment, use experiment-stop. For interpreting results, use experiment-analyze.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
 ---
 

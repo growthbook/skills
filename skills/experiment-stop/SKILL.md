@@ -102,13 +102,17 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
      <host>/experiment/<experiment-id>
      ```
      Derive `<host>` from `GB_API_URL` by swapping `api.` → `app.` (matches `experiment-launch`'s convention; on the default cloud host this produces `https://app.growthbook.io`).
-   - **If `enableTemporaryRollout: true` was sent**, eligible traffic is now routed to the released variation through the experiment's existing flag rule. The user can toggle this off later by:
-     ```bash
-     echo '{"enableTemporaryRollout": false}' \
-       | gb-call POST /api/v1/experiments/<experiment-id>/modify-temporary-rollout -
-     ```
-     and then clean up the `experiment-ref` rule on the linked flag via `flag-targeting`.
-   - **If no rollout was enabled**, the linked feature's `experiment-ref` rule is still in place — the user should either (a) update the flag's default value to match the winning variation and remove the rule, or (b) clean up the rule via `flag-targeting`. Surface this every time, because the flag keeps routing to a stopped experiment until cleaned up.
+   **What happens to the flag?** Surface the disposition clearly based on what was sent:
+
+   **With temporary rollout (`enableTemporaryRollout: true`):** traffic is already routed to the winner via the existing experiment-ref rule. The flag is "shipping" — nothing needs to change immediately. When ready to clean up:
+   - **Option A — Permanent rule:** remove the experiment-ref rule via `flag-rules`, add a permanent force rule serving the winner value via `flag-targeting`, then optionally archive the experiment.
+   - **Option B — Clean up entirely:** if the feature is fully shipped and will be inlined in code, use `flag-cleanup` to walk through code cleanup and archive/delete the flag.
+   - To turn off the temporary rollout first (roll back): `echo '{"enableTemporaryRollout": false}' | gb-call POST /api/v1/experiments/<experiment-id>/modify-temporary-rollout -`
+
+   **Without temporary rollout:** the experiment-ref rule is still on the flag, routing traffic to a stopped experiment (users will get the control value). The flag needs attention:
+   - **Option A — Ship the winner:** set `defaultValue` to the winner's value via `flag-default-value`, then remove the experiment-ref rule via `flag-rules`. Or use `flag-targeting` to add a permanent force rule serving the winner, then remove the experiment-ref rule.
+   - **Option B — Roll back:** the flag's default value already serves the control — just remove the experiment-ref rule via `flag-rules` and the flag returns to its pre-experiment state.
+   - **Option C — Full cleanup:** use `flag-cleanup` to inline the value in code and archive/delete the flag.
 
 ## Guardrails
 
@@ -132,5 +136,8 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 ## Handoffs
 
 - `experiment-analyze` — run first if the user wants to interpret results before deciding.
-- `flag-targeting` — after stopping with a declared winner, the linked flag's `experiment-ref` rule needs to be updated or removed, especially if no temporary rollout is being used.
+- `flag-rules` — remove the experiment-ref rule after stopping (always needed eventually).
+- `flag-targeting` — add a permanent force rule serving the winner value (replaces the experiment-ref rule).
+- `flag-default-value` — set the flag's default to the winner value when shipping without a targeting rule.
+- `flag-cleanup` — if the feature is fully shipped and the flag should be removed from code and archived.
 - `experiment-design` and `experiment-launch` — for the next test if this one informed a follow-up.
