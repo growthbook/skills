@@ -6,31 +6,59 @@ The skills call the [GrowthBook REST API](https://docs.growthbook.io/api) direct
 
 ## What's included
 
-Ten skills, all powered by the REST API:
-
 ### Setup
 | Skill | What it does |
 | --- | --- |
 | `gb-setup` | Walks you through API key, owner, and (self-hosted) API URL. Validates against the live API and writes `~/.config/growthbook/.env` with `chmod 600`. Re-run anytime to update. |
 
-### Feature flags
+### Feature flags — Revision lifecycle
+
+Every flag change goes through a draft revision before going live. These three skills handle the full draft → review → publish flow.
+
 | Skill | What it does |
 | --- | --- |
-| `flag-create` | Create a new feature flag, with collision check, valueType picking, and the "flag is created disabled" reminder. |
-| `flag-discovery` | List flags, inspect one, or audit for stale flags. Reads only. |
-| `flag-targeting` | Add, edit, or remove targeting rules on an existing flag — including percentage rollouts, forced-value rules, and the env-level kill switch. Handles approval-required and merge-conflict failure paths. |
-| `flag-cleanup` | Archive or delete a stale flag, walking the user through inlining the flag's `defaultValue` at call sites first. Two-step safety gate (archive → verify → delete); uses Code References API or Grep to find call sites. |
+| `flag-revisions` | List and inspect open drafts, check who owns them, see approval status, create or discard drafts. The "what's in flight?" skill. |
+| `flag-review` | Request an approval review on a draft, or submit a review (approve / request-changes / comment). |
+| `flag-publish` | Publish a draft live, resolve merge conflicts (rebase), discard, or revert to a prior revision. |
+
+### Feature flags — Operations
+
+| Skill | What it does |
+| --- | --- |
+| `flag-create` | Create a new feature flag — collision check, value type, environments, defaultValue. Ships disabled everywhere. |
+| `flag-metadata` | Update a flag's description, owner, project, tags, custom fields, or JSON schema. |
+| `flag-default-value` | Change the fallback value served when no rules match. |
+| `flag-toggle` | Enable or disable a flag in a specific environment (the kill switch). Review-gated. |
+| `flag-prerequisites` | Gate an entire flag on another boolean flag being on. |
+| `flag-cleanup` | Archive or delete a stale flag, walking through code-site inlining first. Detects temporary rollouts, handles code references, two-step safety gate (archive → verify → delete). |
+
+### Feature flags — Rules
+
+| Skill | What it does |
+| --- | --- |
+| `flag-rules` | Entry point: list rules, delete a rule, reorder, or route to the right rule skill. |
+| `flag-targeting` | Add, edit, or remove force / rollout rules — with conditions, saved groups, and rule-level prerequisites. Full operator reference for MongoDB-style conditions. |
+| `flag-schedule` | Time-gate a rule: set a start and/or end datetime for automatic activation. |
+| `flag-ramp` | Multi-step ramp schedule: progressively increase coverage over time with per-step intervals or manual approval gates. Includes full live ramp management (advance, pause, rollback, approve-step). |
+| `flag-monitoring` | Monitored progressive rollout ("safe rollout"): ramp schedule with guardrail metric monitoring and optional auto-rollback. |
+| `flag-experiment` | Add an experiment-ref rule to a flag to run an A/B test through it. |
+
+### Feature flags — Discovery
+
+| Skill | What it does |
+| --- | --- |
+| `flag-search` | Search, list, and audit flags by project, tag, owner, environment state, or staleness. Read-only. |
+| `flag-graph` | Trace a flag's dependency graph: what it depends on (prerequisites), what depends on it, linked experiments and holdouts. |
 
 ### Experimentation
+
 | Skill | What it does |
 | --- | --- |
 | `experiment-brainstorm` | Propose new experiment ideas grounded in your team's past stopped-experiment history. |
 | `experiment-design` | Walk through hypothesis, variations, primary metric, guardrails, and sample size to produce a launchable spec. Reads only. |
-| `experiment-launch` | End-to-end launch: create the experiment, prep the flag, wire the experiment-ref rule, and call `/start`. Handles approval and pre-launch checklist failure paths. |
+| `experiment-launch` | End-to-end launch: create the experiment, prep or reuse the feature flag, wire the experiment-ref rule, and call `/start`. Works for both experiment-first and flag-first workflows. Handles approval and pre-launch checklist failure paths. |
 | `experiment-analyze` | Trigger a fresh snapshot, poll until ready, then interpret results (SRM check, lifts, CIs, guardrails). |
-| `experiment-stop` | Stop a running experiment, optionally declaring a winning variation. |
-
-More skills are on the roadmap — see [`notes/roadmap.md`](notes/roadmap.md) for scope, priority, and likely endpoints. The remaining Phase 2 addition is `metric-create` (define new metrics from the agent). Phase 3 includes `experiment-statistics` and the SDK-related skills.
+| `experiment-stop` | Stop a running experiment, optionally declaring a winner and enabling a temporary rollout. Full post-stop flag disposition guidance. |
 
 ## Install
 
@@ -57,7 +85,7 @@ It walks you through your API key, owner identifier, and (for self-hosted) your 
 
 ```bash
 export GB_API_KEY=<your-key>             # required: PAT or Secret Key
-export GB_EMAIL=you@example.com          # required for flag-create + experiment-launch
+export GB_EMAIL=you@example.com          # required for write skills
                                          # (accepts an email OR a u_... userId)
 export GB_API_URL=https://api.your-host  # self-hosted only
 ```
@@ -67,7 +95,7 @@ Get a Personal Access Token from [`app.growthbook.io/settings/keys`](https://app
 ### 3. Verify
 
 ```text
-/growthbook:flag-discovery
+/growthbook:flag-search
 ```
 
 Should list your existing GrowthBook feature flags. If anything's wrong with the config, the error points back at `/growthbook:setup`.
@@ -76,25 +104,29 @@ Should list your existing GrowthBook feature flags. If anything's wrong with the
 
 Skills can fire two ways:
 
-- **Automatically** when Claude detects an intent matching the skill's description ("create a feature flag for the new pricing page" → `flag-create` triggers; "what should we test next" → `experiment-brainstorm`; "stop this experiment and ship the winner" → `experiment-stop`).
-- **Explicitly** by typing the slash command, e.g. `/growthbook:setup`, `/growthbook:flag-discovery`, `/growthbook:experiment-launch`.
+- **Automatically** when the agent detects an intent matching the skill's description ("create a feature flag for the new pricing page" → `flag-create`; "what should we test next" → `experiment-brainstorm`; "stop this experiment and ship the winner" → `experiment-stop`).
+- **Explicitly** by typing the slash command, e.g. `/growthbook:setup`, `/growthbook:flag-search`, `/growthbook:experiment-launch`.
 
-Each skill's description names its trigger phrases and routes to sibling skills when the request would be a better fit elsewhere — so they compose cleanly when chained ("brainstorm → design → launch → analyze → stop").
+Each skill's description names its trigger phrases and routes to sibling skills when the request is a better fit elsewhere — so they compose cleanly when chained:
+
+- **Experiment-first:** `experiment-design` → `experiment-launch` → `experiment-analyze` → `experiment-stop` → `flag-cleanup`
+- **Flag-first:** `flag-create` → `flag-toggle` → `flag-targeting` → `flag-ramp` / `flag-monitoring` → `flag-cleanup`
+- **Experiment on an existing flag:** `flag-experiment` → `experiment-launch` (reuses the existing flag) → `experiment-stop` → `flag-cleanup`
 
 ## What these skills do not do
 
-- **No metric or datasource creation.** A `metric-create` skill is planned; until then, create metrics and datasources in the GrowthBook UI and reference them by ID.
-- **No SDK code generation.** A dedicated `sdk-install` / `sdk-developer` skill is on the roadmap; for now, follow GrowthBook's SDK docs and use these skills to manage flags and experiments around your SDK integration.
-- **No multi-armed bandit support.** The experiment skills target standard A/B tests; bandits use the same REST endpoints but report differently. Manage bandits in the UI for now — the skills halt rather than mis-interpret them.
-- **No silent retries or rate-limit backoff in the helper.** GrowthBook is rate-limited at 60 rpm. The skills that fan out (`experiment-analyze`, `experiment-brainstorm`) cap their call counts; multi-tenant orgs hitting concurrent requests may still see `429`s, which `gb-call` surfaces explicitly rather than retrying.
+- **No metric or datasource creation.** Create metrics and datasources in the GrowthBook UI and reference them by ID in the experiment skills.
+- **No SDK code generation.** Follow GrowthBook's SDK docs; these skills manage flags and experiments via the REST API, not the SDK.
+- **No multi-armed bandit support.** The experiment skills target standard A/B tests; the skills halt rather than mis-interpret bandit experiments.
+- **No silent retries or rate-limit backoff in the helper.** GrowthBook is rate-limited at 60 rpm. The skills that fan out cap their call counts; multi-tenant orgs hitting concurrent requests may still see `429`s, which `gb-call` surfaces explicitly rather than retrying.
 
 ## How it works
 
 The plugin bundles a small Node helper (`scripts/gb-call`) that handles auth, base URL, and error reporting for every REST request. Skills call it via Bash:
 
 ```bash
-gb-call GET /api/v1/features
-echo '<payload>' | gb-call POST /api/v1/features -
+gb-call GET /api/v2/features
+echo '<payload>' | gb-call POST /api/v2/features -
 ```
 
 See [`scripts/README.md`](scripts/README.md) for the full usage reference.
@@ -106,20 +138,44 @@ See [`scripts/README.md`](scripts/README.md) for the full usage reference.
   marketplace.json
   plugin.json
 scripts/
-  gb-call                          # Node REST helper called by every skill (zero deps, Node 18+)
-  README.md                        # gb-call usage, config sources, error catalog
+  gb-call                              # Node REST helper (zero deps, Node 18+)
+  README.md                            # gb-call usage, config sources, error catalog
 skills/
-  gb-setup/SKILL.md                # one-time onboarding (writes ~/.config/growthbook/.env)
+  gb-setup/SKILL.md                    # one-time onboarding
+
+  # Revision lifecycle
+  flag-revisions/SKILL.md              # draft management
+  flag-review/SKILL.md                 # approval workflow
+  flag-publish/SKILL.md                # publish, rebase, revert
+
+  # Flag operations
   flag-create/SKILL.md
-  flag-discovery/SKILL.md
-  flag-targeting/SKILL.md
+  flag-metadata/SKILL.md
+  flag-default-value/SKILL.md
+  flag-toggle/SKILL.md
+  flag-prerequisites/SKILL.md
   flag-cleanup/SKILL.md
+
+  # Rules
+  flag-rules/SKILL.md                  # entry point, list, delete, reorder
+  flag-targeting/SKILL.md              # force/rollout rules + conditions
+  flag-schedule/SKILL.md               # timed activation windows
+  flag-ramp/SKILL.md                   # multi-step ramp schedules
+  flag-monitoring/SKILL.md             # monitored rollouts
+  flag-experiment/SKILL.md             # experiment-ref rules
+
+  # Discovery
+  flag-search/SKILL.md
+  flag-graph/SKILL.md
+
+  # Experimentation
   experiment-brainstorm/SKILL.md
   experiment-design/SKILL.md
   experiment-launch/SKILL.md
   experiment-analyze/SKILL.md
   experiment-stop/SKILL.md
-CLAUDE.md                          # conventions + verify-against-source rule for contributors
+
+CLAUDE.md                              # authoring conventions for contributors
 .gitignore
 README.md
 LICENSE
@@ -128,16 +184,16 @@ CHANGELOG.md
 
 ## Security & secrets
 
-- **Where the key lives.** `gb-setup` writes `~/.config/growthbook/.env` inside a `0700` directory at file mode `0600` — owner-read/write only, no other user on the system can read it. Environment variables (if exported) take precedence over the file, so CI and one-off overrides keep working.
-- **Pasting a key into chat.** The value you give `gb-setup` lands in your local Claude Code transcript and is sent to Anthropic as part of the conversation; it cannot be retroactively masked. Generate a fresh PAT for the plugin rather than reusing your personal admin token — that way you can revoke it independently if anything goes wrong.
+- **Where the key lives.** `gb-setup` writes `~/.config/growthbook/.env` inside a `0700` directory at file mode `0600` — owner-read/write only. Environment variables take precedence over the file, so CI and one-off overrides keep working.
+- **Pasting a key into chat.** The value you give `gb-setup` lands in your local transcript and is sent to Anthropic as part of the conversation; it cannot be retroactively masked. Generate a fresh PAT for the plugin rather than reusing your personal admin token — that way you can revoke it independently if anything goes wrong.
 - **Revoking a leaked key.** Visit [`app.growthbook.io/settings/keys`](https://app.growthbook.io/settings/keys) (or your self-hosted equivalent) and revoke. Then re-run `/growthbook:setup` with the replacement.
-- **What the helper rejects.** `gb-call` refuses values containing whitespace or control characters (CRLF in `GB_API_KEY` would inject headers); `gb-setup` refuses `http://` URLs and URLs with a path component. These produce explicit errors rather than silent fix-ups.
+- **What the helper rejects.** `gb-call` refuses values containing whitespace or control characters (CRLF in `GB_API_KEY` would inject headers); `gb-setup` refuses `http://` URLs and URLs with a path component.
 
 ## Contributing
 
 Issues and PRs welcome at [github.com/growthbook/skills](https://github.com/growthbook/skills). For larger proposals (new skills, changes to skill scope), open an issue first.
 
-Before changing a skill: read [`CLAUDE.md`](CLAUDE.md). It documents the skill structure, the `allowed-tools` security model, the "verify every payload shape against the GrowthBook back-end source before shipping" rule, and a doc cross-reference map for finding the canonical answer on any GrowthBook concept. Every guardrail in every skill has a reason — `CLAUDE.md` is how we keep those reasons accessible.
+Before changing a skill: read [`CLAUDE.md`](CLAUDE.md). It documents the skill structure, the `allowed-tools` security model, the "verify every payload shape against the GrowthBook back-end source before shipping" rule, and a doc cross-reference map for finding the canonical answer on any GrowthBook concept.
 
 ## License
 

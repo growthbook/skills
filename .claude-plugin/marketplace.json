@@ -5,12 +5,12 @@
     "email": "support@growthbook.io",
     "url": "https://growthbook.io"
   },
-  "description": "GrowthBook agent skills for feature flagging and experimentation.",
+  "description": "22 agent skills for GrowthBook — full feature flag lifecycle (create, target, schedule, ramp, monitor, publish, clean up) and A/B experiment management (brainstorm, design, launch, analyze, stop). Calls the GrowthBook REST API directly; no MCP server required.",
   "plugins": [
     {
       "name": "growthbook",
       "source": "./",
-      "description": "Lifecycle skills for GrowthBook: flag creation, flag discovery, experiment brainstorming."
+      "description": "Full-lifecycle playbooks for GrowthBook feature flags and experiments. Covers draft revisions, approval workflows, force/rollout rules, timed schedules, multi-step ramps with hold-for-approval gates, monitored rollouts, experiment-ref wiring, dependency graphing, stale-flag audits, and end-to-end experiment launch → analyze → stop → ship. All skills call the REST API through a bundled helper; no extra dependencies beyond Node 18."
     }
   ]
 }
