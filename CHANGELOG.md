@@ -2,6 +2,47 @@
 
 All notable changes to the `growthbook` plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [1.0.0] — 2026-06-01
+
+Major expansion: the feature flag side of the plugin grows from 2 skills to 19, covering the full lifecycle from draft creation through cleanup. The architecture is unchanged — all skills call the REST API through `gb-call`.
+
+### Added
+
+**Revision lifecycle**
+- `flag-revisions` — list and inspect open drafts, check approval status, create or discard drafts.
+- `flag-review` — request an approval review on a draft, or submit a review (approve / request-changes / comment).
+- `flag-publish` — publish a draft, resolve merge conflicts (rebase field-by-field), discard, or revert to a prior revision.
+
+**Flag operations**
+- `flag-metadata` — update description, owner, project, tags, custom fields, or JSON schema via draft revision.
+- `flag-default-value` — change the fallback value served when no rules match.
+- `flag-toggle` — enable or disable a flag in a specific environment (the env-level kill switch). Review-gated happy path.
+- `flag-prerequisites` — gate an entire flag on another boolean flag being on. Enforces boolean-flag-only constraint that the backend leaves permissive.
+
+**Rules**
+- `flag-rules` — entry point: list rules in evaluation order, delete a rule, reorder, or route to the right specialized skill.
+- `flag-schedule` — add a timed start and/or end to a rule using ISO 8601 with timezone offset. Handles DST, natural-language date resolution, and defaultValue off-state verification.
+- `flag-ramp` — multi-step ramp schedule with per-step intervals or hold-for-approval gates. Full live ramp management: start, pause, resume, advance, approve-step, rollback, restart, complete.
+- `flag-monitoring` — monitored progressive rollout ("safe rollout"): ramp schedule with guardrail metric monitoring and optional auto-rollback. Covers status checks, step approval, guardrail response, and UI drill-down.
+- `flag-experiment` — add an experiment-ref rule to a flag. Handles flag-first and experiment-first flows; routes to `experiment-launch` when no experiment exists yet (which detects and reuses the existing flag).
+
+**Discovery**
+- `flag-search` — search, list, and audit flags by project, tag, owner, environment state, or staleness. Full `StaleFeatureReason` interpretation table.
+- `flag-graph` — trace a flag's dependency graph: prerequisites, reverse dependents, linked experiments, holdout associations.
+
+### Changed
+- `flag-targeting` — narrowed scope to force/rollout rules only (env-toggle moved to `flag-toggle`; experiment-ref moved to `flag-experiment`). Added full operator reference table for MongoDB-style conditions including case-insensitive variants (`$ini`, `$nini`, `$regexi`, `$notRegexi`, `$alli`), `$includes`/`$notIncludes`, `$empty`/`$notEmpty`, `$inGroup`/`$notInGroup`. Attribute list fetched upfront with `?projectId` scoping. Three targeting properties (condition, savedGroups, prerequisites) documented as separate rule fields.
+- `flag-cleanup` — updated to detect active temporary rollouts (uses winner value as inline replacement, not `defaultValue`); references `flag-search` instead of retired `flag-discovery`; full post-cleanup handoffs.
+- `experiment-launch` — description clarifies it handles the flag-first path (detects and reuses an existing flag via the 409/reuse path).
+- `experiment-stop` — expanded post-stop flag disposition: three concrete paths for with/without temporary rollout. Full handoff chain to `flag-rules`, `flag-targeting`, `flag-default-value`, `flag-cleanup`.
+- `plugin.json` bumped to `1.0.0`; descriptions in `marketplace.json` and `plugin.json` rewritten to reflect the full suite.
+- README rewritten: full skill tables for all families, updated layout, two composition chains (experiment-first, flag-first).
+
+### Removed
+- `flag-discovery` — retired; content absorbed into `flag-search` and `flag-graph`.
+- `notes/roadmap.md` — removed.
+- Deprecated rule types `type: "experiment"` (inline) and `type: "safe-rollout"` removed from all skill content. Safe rollout concept preserved as a monitored ramp schedule.
+
 ## [0.3.0] — 2026-05-08
 
 Adds the experiment lifecycle. Four new skills covering design through stop. The flag side stays where it is (create + discovery); flag-targeting and flag-cleanup are still on the roadmap.
@@ -71,6 +112,7 @@ Initial public release. Three MCP-only skills built on the [GrowthBook MCP serve
 - Onboarding: `onboarding`, `sdk-install`.
 - Knowledge: `sdk-developer`, `experiment-statistics`.
 
+[1.0.0]: https://github.com/growthbook/skills/releases/tag/v1.0.0
 [0.3.0]: https://github.com/growthbook/skills/releases/tag/v0.3.0
 [0.2.1]: https://github.com/growthbook/skills/releases/tag/v0.2.1
 [0.2.0]: https://github.com/growthbook/skills/releases/tag/v0.2.0
