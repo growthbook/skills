@@ -85,7 +85,7 @@ This means:
 
    Omit `startDate` or `endDate` if no bound on that side.
 
-4. Capture the returned `version`. Hand off to feature-publish.
+4. Capture the returned `version`. Hand off to flag-publish.
 
 ### Path B — Add a schedule to an existing rule
 
@@ -117,7 +117,7 @@ This means:
    echo '<patch>' | gb-call PUT /api/v2/features/<flag-id>/revisions/new/rules/<rule-id> -
    ```
 
-5. Capture the returned `version`. Hand off to feature-publish.
+5. Capture the returned `version`. Hand off to flag-publish.
 
 ### Path C — Remove a schedule from a rule
 
@@ -157,4 +157,4 @@ Setting all timestamps to `null` and `scheduleType: "none"` clears the schedule.
 - `flag-targeting` — to build the rule's targeting conditions alongside the schedule
 - `flag-ramp` — for multi-step progressive rollouts with intervals between coverage increases
 - `flag-rules` — to reorder rules after adding a scheduled rule
-- `feature-publish` — to publish the draft
+- `flag-publish` — to publish the draft

@@ -67,7 +67,7 @@ Show the numbered list (Path A) so the user can pick by number. Confirm:
 gb-call DELETE /api/v2/features/<flag-id>/revisions/new/rules/<rule-id>
 ```
 
-Capture the returned `version`. Hand off to feature-publish.
+Capture the returned `version`. Hand off to flag-publish.
 
 **safe-rollout removal:** The server cleans up the `SafeRollout` entity when the rule is still in draft and the rollout hasn't started. If the rollout has already started, the SafeRollout entity is preserved (no data loss) but the rule is removed from the flag.
 
@@ -82,7 +82,7 @@ echo '{"ruleIds":["<id-1>","<id-2>","<id-3>"]}' \
   | gb-call POST /api/v2/features/<flag-id>/revisions/new/rules/reorder -
 ```
 
-Supply the **complete ordered array** of all rule IDs — this replaces the full order, not a swap. Capture the returned `version`. Hand off to feature-publish.
+Supply the **complete ordered array** of all rule IDs — this replaces the full order, not a swap. Capture the returned `version`. Hand off to flag-publish.
 
 Remind the user that evaluation is top-to-bottom, first match wins — rules higher in the list take priority.
 
@@ -109,4 +109,4 @@ Remind the user that evaluation is top-to-bottom, first match wins — rules hig
 - `flag-ramp` — multi-step progressive rollout schedules
 - `flag-monitoring` — monitored rollouts and safe-rollout rules
 - `flag-prerequisites` — feature-level prerequisite gates (not rule-level)
-- `feature-publish` — to publish the draft after a delete or reorder
+- `flag-publish` — to publish the draft after a delete or reorder

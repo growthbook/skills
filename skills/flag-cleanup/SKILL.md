@@ -314,7 +314,7 @@ Print a summary:
 - `flag-search` — for finding and auditing stale flags before cleanup (Path C in flag-search is the natural caller).
 - `flag-graph` — to check what depends on a flag before archiving or deleting it.
 - `flag-targeting` — if the user really wants to change the flag's behavior rather than remove it.
-- `feature-revisions` — to check for open drafts that must be resolved before archiving.
-- `feature-publish` — handles the approval-required (5a) and merge-conflict (5b) branches on archive.
+- `flag-revisions` — to check for open drafts that must be resolved before archiving.
+- `flag-publish` — handles the approval-required (5a) and merge-conflict (5b) branches on archive.
 - `experiment-stop` — must precede cleanup of a flag wired to a running experiment.
 - Manual UI step (no skill): unarchiving an archived-but-not-yet-deleted flag — done at `<host>/features/<flag-id>`. The skill's rollback step handles the in-session case; outside the session, the user falls back to the UI.

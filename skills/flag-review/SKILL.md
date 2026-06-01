@@ -1,12 +1,12 @@
 ---
-name: feature-review
-description: Request or submit an approval review on a GrowthBook feature flag draft revision. Use when the user says "request review for this draft", "approve this change", "reject this draft", "request changes on revision X", "I want to review flag Y's pending draft", "submit my approval", "mark this as needing changes", "who needs to approve this", or "check the review status". For creating and editing drafts, use the relevant flag-* write skill. For publishing an approved draft or resolving merge conflicts, use feature-publish. For listing all pending drafts across flags, use feature-revisions.
+name: flag-review
+description: Request or submit an approval review on a GrowthBook feature flag draft revision. Use when the user says "request review for this draft", "approve this change", "reject this draft", "request changes on revision X", "I want to review flag Y's pending draft", "submit my approval", "mark this as needing changes", "who needs to approve this", or "check the review status". For creating and editing drafts, use the relevant flag-* write skill. For publishing an approved draft or resolving merge conflicts, use flag-publish. For listing all pending drafts across flags, use flag-revisions.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *), Bash(open https://*), Bash(xdg-open https://*)
 ---
 
-# feature-review
+# flag-review
 
-Request and submit approval reviews on GrowthBook feature flag draft revisions. Only needed when the org has approval workflows configured — if approvals aren't required, feature-publish handles the full flow without a review step.
+Request and submit approval reviews on GrowthBook feature flag draft revisions. Only needed when the org has approval workflows configured — if approvals aren't required, flag-publish handles the full flow without a review step.
 
 Two roles use this skill: the **drafter** (requests a review, can't self-approve) and the **reviewer** (submits the review decision).
 
@@ -30,7 +30,7 @@ draft → [request-review] → pending-review → [approve]           → approv
    # or if version is known:
    gb-call GET /api/v2/features/<id>/revisions/<version>
    ```
-   Accept `draft` or `changes-requested` status. For any other status, surface it and explain what it means using the status table from feature-revisions.
+   Accept `draft` or `changes-requested` status. For any other status, surface it and explain what it means using the status table from flag-revisions.
 
 2. Request review:
    ```bash
@@ -38,7 +38,7 @@ draft → [request-review] → pending-review → [approve]           → approv
      | gb-call POST /api/v2/features/<id>/revisions/<version>/request-review -
    ```
 
-   Revision moves to `pending-review`. Tell the user a reviewer needs to approve before it can be published via feature-publish. Remind them that self-approval is not allowed — a different team member must review.
+   Revision moves to `pending-review`. Tell the user a reviewer needs to approve before it can be published via flag-publish. Remind them that self-approval is not allowed — a different team member must review.
 
 ### Path B — Submit a review (reviewer acting on a pending-review revision)
 
@@ -56,12 +56,12 @@ draft → [request-review] → pending-review → [approve]           → approv
 
    **Author email or userId known** → filter cross-feature by author:
    ```bash
-   gb-call GET '/api/v2/feature-revisions?status=pending-review&author=<email-or-userid>'
+   gb-call GET '/api/v2/flag-revisions?status=pending-review&author=<email-or-userid>'
    ```
 
    **Author name known but not email** → fetch all pending-review revisions and filter client-side on `createdBy` matching the name:
    ```bash
-   gb-call GET '/api/v2/feature-revisions?status=pending-review'
+   gb-call GET '/api/v2/flag-revisions?status=pending-review'
    ```
    Each revision has a `createdBy` field (display name or "API"). Filter for entries where `createdBy` contains the name the user gave, then confirm with the user before proceeding.
 
@@ -95,7 +95,7 @@ draft → [request-review] → pending-review → [approve]           → approv
    ```
 
    Status transitions:
-   - `approve` → `approved` — tell user to publish via feature-publish
+   - `approve` → `approved` — tell user to publish via flag-publish
    - `request-changes` → `changes-requested` — tell reviewer what happens next (author edits, re-requests)
    - `comment` → `pending-review` unchanged — comment is recorded
 
@@ -114,7 +114,7 @@ Report status and what needs to happen next:
 | --- | --- |
 | `draft` | Author requests review when ready |
 | `pending-review` | Reviewer submits a decision |
-| `approved` | Author publishes via feature-publish |
+| `approved` | Author publishes via flag-publish |
 | `changes-requested` | Author edits draft, then re-requests review |
 
 ## Guardrails
@@ -124,18 +124,18 @@ Report status and what needs to happen next:
 - **Can only submit-review on `pending-review` status.** Surface the actual status if it doesn't match.
 - **`changes-requested` is not discarded.** The draft still exists; the author edits it and re-requests review via Path A. Don't suggest discarding unless the author explicitly wants to abandon the changes.
 - **Reset-review-on-changes.** If the org has this setting enabled, any edit to an `approved` draft reverts it to `draft`. Warn the user if they're about to edit an already-approved revision: "Editing this revision will reset its approval status — you'll need to request review again."
-- **Approval ≠ publication.** An `approved` draft is not yet live. The author still needs to run feature-publish.
-- **This skill does not publish.** After approval, hand off to feature-publish.
+- **Approval ≠ publication.** An `approved` draft is not yet live. The author still needs to run flag-publish.
+- **This skill does not publish.** After approval, hand off to flag-publish.
 
 ## Endpoints used
 
 - `GET /api/v2/features/:id/revisions/:version` — inspect revision before acting
 - `GET /api/v2/features/:id/revisions` (status filter) — find pending-review revisions for a flag
-- `GET /api/v2/feature-revisions` (status, mine filters) — find pending-review revisions across all flags
+- `GET /api/v2/flag-revisions` (status, mine filters) — find pending-review revisions across all flags
 - `POST /api/v2/features/:id/revisions/:version/request-review` (body: optional comment)
 - `POST /api/v2/features/:id/revisions/:version/submit-review` (body: action + optional comment)
 
 ## Handoffs
 
-- `feature-revisions` — to list and inspect all open drafts
-- `feature-publish` — after approval, to publish the draft live
+- `flag-revisions` — to list and inspect all open drafts
+- `flag-publish` — after approval, to publish the draft live

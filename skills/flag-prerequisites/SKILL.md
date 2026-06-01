@@ -45,7 +45,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
      | gb-call PUT /api/v2/features/<flag-id>/revisions/new/prerequisites -
    ```
 
-5. Hand off to feature-publish.
+5. Hand off to flag-publish.
 
 ### Path B — Remove a prerequisite
 
@@ -53,7 +53,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 2. Show the list and ask which to remove.
 3. Build the updated array without the removed entry.
 4. Apply via draft (step A-4 above) with the filtered array. An empty array `[]` removes all prerequisites.
-5. Hand off to feature-publish.
+5. Hand off to flag-publish.
 
 ### Path C — Inspect current prerequisites
 
@@ -84,4 +84,4 @@ Surface the `prerequisites` array. For each entry, fetch the prerequisite flag t
 - `flag-search` — to find the prerequisite flag's ID if the user gives a name
 - `flag-graph` — to trace the full dependency chain and detect circular dependencies
 - `flag-targeting` — to add rule-level prerequisites (scoped to a single rule rather than the whole flag)
-- `feature-publish` — to publish the draft, handle approval-required (400) and merge conflicts (409)
+- `flag-publish` — to publish the draft, handle approval-required (400) and merge conflicts (409)

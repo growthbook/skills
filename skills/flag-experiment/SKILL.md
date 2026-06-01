@@ -65,7 +65,7 @@ Variation order in the `variations` array must match the experiment's variation 
 echo '<payload>' | gb-call POST /api/v2/features/<flag-id>/revisions/new/rules -
 ```
 
-Capture the returned `version`. Hand off to feature-publish.
+Capture the returned `version`. Hand off to flag-publish.
 
 ### Path B — Edit an existing experiment-ref rule's targeting
 
@@ -95,4 +95,4 @@ The server allows patching `enabled`, `condition`, `savedGroups`, `prerequisites
 - `flag-targeting` — to edit the targeting conditions, scope, or saved groups on an existing experiment-ref rule
 - `flag-rules` — to reorder or delete experiment rules
 - `experiment-stop` — to stop the experiment; after stopping, use flag-rules to clean up the experiment-ref rule
-- `feature-publish` — to publish the draft
+- `flag-publish` — to publish the draft

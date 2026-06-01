@@ -60,15 +60,15 @@ echo '{"environment":"<env-id>","enabled":<true|false>}' \
 
 The `new` magic version creates a fresh draft or layers onto an existing one. Capture the returned `version` number.
 
-### 5. Publish via feature-publish
+### 5. Publish via flag-publish
 
 Environment toggles are the canonical kill-switch use case — offer to publish immediately:
 
 > "Toggle applied to draft revision `<version>`. Publish now?"
 
-Hand off to feature-publish for the publish step. feature-publish handles the approval-required (400) and merge-conflict (409) failure modes.
+Hand off to flag-publish for the publish step. flag-publish handles the approval-required (400) and merge-conflict (409) failure modes.
 
-Note: even for emergency kill switches, the approval flow is the happy path. If approval is required and the situation is urgent, option B or C in feature-publish's approval branch (org-wide bypass or per-token bypass) are the fastest paths, but they require admin action.
+Note: even for emergency kill switches, the approval flow is the happy path. If approval is required and the situation is urgent, option B or C in flag-publish's approval branch (org-wide bypass or per-token bypass) are the fastest paths, but they require admin action.
 
 ## Guardrails
 
@@ -90,4 +90,4 @@ Note: even for emergency kill switches, the approval flow is the happy path. If 
 - `flag-search` — if the user gives a description instead of a flag ID
 - `flag-targeting` — to add or edit rules within the enabled environment
 - `flag-rules` — to enable or disable individual rules without toggling the whole environment
-- `feature-publish` — to publish the draft, handle approval-required (400) and merge conflicts (409)
+- `flag-publish` — to publish the draft, handle approval-required (400) and merge conflicts (409)

@@ -80,7 +80,7 @@ echo '{
 
 Omit `startDate` unless the user explicitly requests a delayed start.
 
-**4. Hand off to feature-publish.**
+**4. Hand off to flag-publish.**
 
 ### Path B — Check monitoring status or respond to signals
 
@@ -173,4 +173,4 @@ This skill orchestrates:
 - `flag-ramp` — for managing ramp step structure without monitoring
 - `flag-toggle` — for emergency kill-switch during a live monitored rollout
 - `flag-targeting` — to configure rule conditions before setting up monitoring
-- `feature-publish` — to publish the draft and activate the monitored rollout
+- `flag-publish` — to publish the draft and activate the monitored rollout

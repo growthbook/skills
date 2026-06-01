@@ -97,7 +97,7 @@ It expects `GB_API_KEY` [and `GB_EMAIL`, if writing flags] in env.
 - **Show bash + JSON literally.** Copy-pasteable examples beat prose. The reader is Claude executing the skill, not a human reading docs.
 - **Model failure modes as branches**, not as "see error handling section." `experiment-launch` step 6 → 6a (approval) → 6b (checklist) is the pattern: each branch tells the user how to re-run from where the skill stopped.
 - **Write skills track required vs. optional inputs at the top.** Collect what's missing before any state-changing call.
-- **Thread the draft version through chained write skills.** When multiple write skills run in sequence in the same session (e.g. flag-targeting then flag-toggle then feature-publish), each skill should use the `version` number captured by the previous step rather than relying on `version=new` to silently pick a draft. The pattern: if a version is already in context, substitute it for `new` in every endpoint path; if no version is in context (fresh invocation), fall back to `new` (auto-create/reuse) or `/revisions/latest?mine=true`. This makes draft threading explicit and prevents a teammate's concurrent draft from being unexpectedly reused mid-chain.
+- **Thread the draft version through chained write skills.** When multiple write skills run in sequence in the same session (e.g. flag-targeting then flag-toggle then flag-publish), each skill should use the `version` number captured by the previous step rather than relying on `version=new` to silently pick a draft. The pattern: if a version is already in context, substitute it for `new` in every endpoint path; if no version is in context (fresh invocation), fall back to `new` (auto-create/reuse) or `/revisions/latest?mine=true`. This makes draft threading explicit and prevents a teammate's concurrent draft from being unexpectedly reused mid-chain.
 
 ### Guardrails are an API-quirk catalog
 
@@ -188,7 +188,7 @@ Skill names map to **what the user is doing**, not to API endpoints:
 - Experiments: `brainstorm → design → launch → analyze → stop`
 - Flags: `create`, `discovery` (today); `targeting`, `cleanup` (roadmap)
 
-When proposing a new skill, name it after the user's intent. If you find yourself naming a skill after an endpoint (`feature-revisions-publish`), the scope is probably wrong — fold it into the lifecycle skill that uses it.
+When proposing a new skill, name it after the user's intent. If you find yourself naming a skill after an endpoint (`flag-revisions-publish`), the scope is probably wrong — fold it into the lifecycle skill that uses it.
 
 ## Rate-limit awareness
 

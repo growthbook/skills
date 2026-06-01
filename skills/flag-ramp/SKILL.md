@@ -88,7 +88,7 @@ echo '<payload>' \
 
 Capture the returned `version`. The ramp schedule is staged as a `rampAction` on the draft — it becomes live when the draft is published.
 
-**5. Hand off to feature-publish.**
+**5. Hand off to flag-publish.**
 
 ### Path B — Create a new rule with a ramp schedule in one step
 
@@ -249,4 +249,4 @@ gb-call POST /api/v1/ramp-schedules/<rs-id>/actions/start
 - `flag-monitoring` — to add guardrail metrics and automated monitoring signals to the ramp
 - `flag-targeting` — to set up the rule's targeting conditions before attaching a ramp
 - `flag-toggle` — for an emergency kill-switch if the ramp needs to be stopped immediately
-- `feature-publish` — to publish the draft and activate the ramp
+- `flag-publish` — to publish the draft and activate the ramp

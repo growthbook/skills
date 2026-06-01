@@ -8,7 +8,7 @@ allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
 
 Add, edit, or remove targeting rules on an existing GrowthBook feature flag. Handles `force` (serve a specific value to matched users) and `rollout` (serve a value to a random percentage of users) rule types, with full support for conditions, saved groups, and rule-level prerequisites.
 
-Every change goes through a draft revision and requires publishing. For publishing, use feature-publish — it handles approval-required and merge-conflict failure modes.
+Every change goes through a draft revision and requires publishing. For publishing, use flag-publish — it handles approval-required and merge-conflict failure modes.
 
 All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It needs `GB_API_KEY` and `GB_EMAIL` set in env or written to `~/.config/growthbook/.env` by `/growthbook:setup`.
 
@@ -44,7 +44,7 @@ Collect before starting:
 - [ ] 3a. Add path
 - [ ] 3b. Edit path
 - [ ] 3c. Remove path
-- [ ] 4. Hand off to feature-publish
+- [ ] 4. Hand off to flag-publish
 ```
 
 ### 1. Fetch flag and current state
@@ -288,11 +288,11 @@ For experiment-ref removal: "The linked experiment is not affected by removing t
 
 Capture `revision.version`.
 
-### 4. Hand off to feature-publish
+### 4. Hand off to flag-publish
 
 After any mutation, ask: "Publish this change now, or leave it as a draft?"
 
-Hand off to feature-publish. It handles:
+Hand off to flag-publish. It handles:
 - Approval-required (400) — offer review flow, org-wide bypass, per-token bypass
 - Merge conflict (409) — show conflict fields, collect overwrite/discard decisions, rebase
 
@@ -327,4 +327,4 @@ Hand off to feature-publish. It handles:
 - `flag-experiment` — for adding experiment-ref or inline experiment rules
 - `flag-prerequisites` — for feature-level prerequisite gates
 - `flag-search` — to resolve a flag ID from a description
-- `feature-publish` — to publish the draft (handles approval and merge conflicts)
+- `flag-publish` — to publish the draft (handles approval and merge conflicts)

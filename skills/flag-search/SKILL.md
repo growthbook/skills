@@ -135,4 +135,4 @@ Do not delete anything. Hand off to flag-cleanup for actual removal.
 - `flag-graph` — to trace dependencies for a specific flag (what does it depend on, what depends on it)
 - `flag-cleanup` — to archive or delete cleanup candidates found in Path C
 - `flag-targeting`, `flag-rules` — to make changes after identifying which flag needs updating
-- `feature-revisions` — to check for open drafts on flags found in the search
+- `flag-revisions` — to check for open drafts on flags found in the search

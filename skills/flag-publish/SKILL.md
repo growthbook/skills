@@ -1,10 +1,10 @@
 ---
-name: feature-publish
-description: Publish a GrowthBook feature flag draft revision, resolve merge conflicts, revert to a prior revision, or discard a draft. Use when the user says "publish this draft", "push this live", "go live with revision X", "there's a merge conflict on my flag", "rebase my draft", "fix the merge conflict on flag X", "revert flag X to a previous version", "roll back this flag change", "discard this draft", or "abandon these changes". For requesting or submitting an approval review before publish, use feature-review. For listing and inspecting drafts, use feature-revisions.
+name: flag-publish
+description: Publish a GrowthBook feature flag draft revision, resolve merge conflicts, revert to a prior revision, or discard a draft. Use when the user says "publish this draft", "push this live", "go live with revision X", "there's a merge conflict on my flag", "rebase my draft", "fix the merge conflict on flag X", "revert flag X to a previous version", "roll back this flag change", "discard this draft", or "abandon these changes". For requesting or submitting an approval review before publish, use flag-review. For listing and inspecting drafts, use flag-revisions.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *), Bash(open https://*), Bash(xdg-open https://*)
 ---
 
-# feature-publish
+# flag-publish
 
 Get a GrowthBook feature flag draft revision live, or undo a change. Handles the full publish flow including the two common failure modes — approval-required (blocked) and merge conflict (stale base) — and the escape hatches: discard and revert.
 
@@ -47,7 +47,7 @@ gb-call GET '/api/v2/features/<id>/revisions?status=all-drafts'
 
 ```bash
 # Find all approved drafts the user is involved in:
-gb-call GET '/api/v2/feature-revisions?status=approved&mine=true'
+gb-call GET '/api/v2/flag-revisions?status=approved&mine=true'
 ```
 
 If the list has one entry, confirm with the user by surfacing the flag ID, revision number, who approved it, and a summary of what changed. If there are multiple, show them all and ask the user to pick.
@@ -74,20 +74,20 @@ Branch on response:
 The draft exists but publish is blocked by the org's approval policy. Branch on the revision's `status` from step 1 — the right response differs:
 
 **If `pending-review`:** someone has already been asked to approve. Nothing to do but wait.
-> "Revision `<version>` is already pending review. Once a teammate approves it in GrowthBook, re-run feature-publish to finish."
+> "Revision `<version>` is already pending review. Once a teammate approves it in GrowthBook, re-run flag-publish to finish."
 Stop here.
 
 **If `approved`:** the revision is approved but publish is still failing — the issue is the token or org bypass setting, not the review state. Skip option A and present only the bypass options:
 > "Revision `<version>` is approved but the API key lacks publish permission. Pick one:
 >
-> **A. Org-wide bypass** — an admin enables "REST API always bypasses approval requirements" under Settings → General → Approvals. Re-run feature-publish after that.
+> **A. Org-wide bypass** — an admin enables "REST API always bypasses approval requirements" under Settings → General → Approvals. Re-run flag-publish after that.
 >
 > **B. Per-token bypass** — use a Personal Access Token whose role grants `bypassApprovalChecks` on this project. Update `GB_API_KEY`, then re-run."
 
 **If `draft` or `changes-requested`:** review hasn't been requested yet. Offer to request it now, and offer to open the UI:
 > "Your org requires approval before this revision can publish. Options:
 >
-> **A. Standard review flow** (recommended) — I'll request review now. A teammate approves it in GrowthBook, then re-run feature-publish to finish. Want me to open the flag page so your reviewer can find it?
+> **A. Standard review flow** (recommended) — I'll request review now. A teammate approves it in GrowthBook, then re-run flag-publish to finish. Want me to open the flag page so your reviewer can find it?
 >
 > **B. Review in the UI** — open the flag page directly and manage the review there.
 >
@@ -106,7 +106,7 @@ xdg-open <host>/features/<flag-id>?v=<version>
 If the user picks **A**, request review and stop:
 
 ```bash
-echo '{"comment":"Requesting review — re-run feature-publish after approval"}' \
+echo '{"comment":"Requesting review — re-run flag-publish after approval"}' \
   | gb-call POST /api/v2/features/<id>/revisions/<version>/request-review -
 ```
 
@@ -131,7 +131,7 @@ open <host>/features/<flag-id>?v=<version>
 # Linux:
 xdg-open <host>/features/<flag-id>?v=<version>
 ```
-Derive `<host>` from `GB_API_URL` by replacing `api.` → `app.` (cloud default: `https://app.growthbook.io`). Stop here — tell the user to rebase in the UI and re-run feature-publish when done.
+Derive `<host>` from `GB_API_URL` by replacing `api.` → `app.` (cloud default: `https://app.growthbook.io`). Stop here — tell the user to rebase in the UI and re-run flag-publish when done.
 
 If the user wants to resolve via API, continue:
 
@@ -196,7 +196,7 @@ echo '{"strategy":"draft"}' \
   | gb-call POST /api/v2/features/<id>/revisions/<target-version>/revert -
 ```
 
-`strategy: "draft"` creates a new draft with the prior state — the user reviews it via feature-publish before it goes live. **This is the default and recommended path.**
+`strategy: "draft"` creates a new draft with the prior state — the user reviews it via flag-publish before it goes live. **This is the default and recommended path.**
 
 `strategy: "publish"` creates and publishes immediately. Only offer this if the user explicitly asks for an immediate rollback. Org approval settings still apply.
 
@@ -236,5 +236,5 @@ echo '{"strategy":"draft"}' \
 
 ## Handoffs
 
-- `feature-review` — for the approval workflow (triggered in step 3a)
-- `feature-revisions` — to list and inspect drafts before publishing
+- `flag-review` — for the approval workflow (triggered in step 3a)
+- `flag-revisions` — to list and inspect drafts before publishing

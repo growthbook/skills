@@ -55,7 +55,7 @@ Changing the default value affects every user who matches no rules — this is p
 
 > Changing the default from `<old>` to `<new>` will affect all users not matched by any rule. In `<env>` that's currently `<rule-count>` rule(s) — users falling through all of them will now get `<new>` instead of `<old>`.
 
-Hand off to feature-publish for the publish step.
+Hand off to flag-publish for the publish step.
 
 ## Guardrails
 
@@ -76,4 +76,4 @@ Hand off to feature-publish for the publish step.
 - `flag-search` — if the user gives a description instead of a flag ID
 - `flag-targeting` — to add or edit rules that serve specific values to targeted users
 - `flag-cleanup` — if the flag is no longer needed and should be archived
-- `feature-publish` — to publish the draft, handle approval-required (400) and merge conflicts (409)
+- `flag-publish` — to publish the draft, handle approval-required (400) and merge conflicts (409)
