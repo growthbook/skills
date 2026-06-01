@@ -1,6 +1,6 @@
 ---
 name: flag-cleanup
-description: Archive or delete a stale GrowthBook feature flag, walking the user through inlining the flag's effective value at call sites in the codebase before removal. Use when the user says "delete this flag", "remove this stale flag", "clean up flag X", "archive this flag", "we don't need this flag anymore", or "get rid of this flag and its experiment-ref rule". For finding stale flags first, use flag-discovery. For editing rules instead of removing the flag, use flag-targeting. For stopping an experiment that uses the flag, use experiment-stop.
+description: Archive or delete a stale GrowthBook feature flag, walking the user through inlining the flag's effective value at call sites in the codebase before removal. Use when the user says "delete this flag", "remove this stale flag", "clean up flag X", "archive this flag", "we don't need this flag anymore", or "get rid of this flag and its experiment-ref rule". For finding stale flags first, use flag-search. For editing rules instead of removing the flag, use flag-targeting. For stopping an experiment that uses the flag, use experiment-stop.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
 ---
 
@@ -14,7 +14,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
 Collect from the user before starting. Prompt for what's missing.
 
-- **Flag ID** — kebab-case key. If the user gives a description, route to `flag-discovery` first to resolve.
+- **Flag ID** — kebab-case key. If the user gives a description, route to `flag-search` first to resolve.
 - **Action** — `archive` (reversible) or `delete` (permanent; includes archive). Inferred from wording: "archive" / "disable" → archive; "delete" / "remove" / "clean up" / "get rid of" → delete. Confirm before mutating.
 
 ## Workflow
@@ -40,7 +40,7 @@ gb-call GET /api/v2/features/<flag-id>
 
 Capture from the response: `archived` (boolean), `defaultValue`, `valueType`, `environmentSettings` (which envs are enabled), `rules` (the full array, including any `experiment-ref` rules), `holdout` (informational), `project`.
 
-If 404, halt: "no flag with id `<flag-id>`." Suggest `flag-discovery` to list flags.
+If 404, halt: "no flag with id `<flag-id>`." Suggest `flag-search` to list flags.
 
 **Run the safety checks. Halt if any of these fire:**
 
@@ -73,6 +73,9 @@ If 404, halt: "no flag with id `<flag-id>`." Suggest `flag-discovery` to list fl
   ```
   If any returns `status: "running"`, halt with the same message.
 
+  **Temporary rollout check.** While fetching linked experiments, also note any with `status: "stopped"` AND `enableTemporaryRollout: true` — these are not a blocker (the experiment is stopped), but step 2 must use the winner value as the inline replacement. Surface a reminder:
+  > "Temporary rollout is active on experiment `<exp-id>` — all users currently see the winner value. Step 2 will use the winner value as the inline replacement, not `defaultValue`."
+
 - **Draft experiment referencing the flag.** Lower-priority than running, but worth a warn-and-confirm. Reuse the bulk query with a different status filter:
   ```bash
   gb-call GET '/api/v1/experiments?trackingKey=<flag-id>&status=draft'
@@ -92,9 +95,23 @@ If 404, halt: "no flag with id `<flag-id>`." Suggest `flag-discovery` to list fl
 
 ### 2. Compute the inline-replacement value and detect behavior changes
 
-After archival, **every rule stops evaluating** — the flag returns `defaultValue` for all callers, in all environments, regardless of what its rules used to do. So the answer to "what should we inline at call sites?" is simple: `defaultValue`.
+After archival, **every rule stops evaluating** — the flag returns `defaultValue` for all callers. The inline replacement value is usually `defaultValue`, but not always — see the temporary rollout case below.
 
-For `valueType: "json"`, surface the raw JSON-encoded string and let the user adapt the inline shape to fit their code's call signature (they may need to parse, destructure, or wrap it depending on how the flag was previously used).
+**Check for an active temporary rollout first.** For each `experiment-ref` rule in the flag, fetch the linked experiment:
+
+```bash
+gb-call GET /api/v1/experiments/<experiment-id>
+```
+
+If `experiment.status === "stopped"` AND `experiment.enableTemporaryRollout === true`:
+- The experiment's `releasedVariationId` tells you which variation is serving 100% of traffic.
+- Find that variation's value in the experiment-ref rule's `variations` array.
+- **That value — not `defaultValue` — is what all users currently see.**
+- Use it as the inline replacement value. Warn the user clearly:
+
+  > "Temporary rollout is active on this flag. All users currently see the winner value `<winner_value>`. After cleanup, all users will shift to `defaultValue: <default_value>`. If these differ, inlining `<winner_value>` is the correct replacement — not `<default_value>`."
+
+For `valueType: "json"`, surface the raw JSON-encoded string and let the user adapt the inline shape.
 
 **The real question this step exists to answer is: does cleanup change behavior in production?**
 
@@ -102,8 +119,7 @@ Walk the `rules` array and flag anything that previously diverged from `defaultV
 
 - A `force` rule serving a different value to a targeted segment.
 - An active `rollout` rule (coverage > 0) — even one with no condition.
-- An `experiment-ref` rule that "won" with a non-default winning variation (check the linked experiment's `resultSummary` if possible).
-- A `safe-rollout` rule (its `variationValue` is what's served when the rollout matches).
+- An `experiment-ref` rule: fetch the linked experiment. If stopped with temporary rollout, the winner value is the divergence (handled above). If still assigning traffic normally (stopped experiment, no temporary rollout), users are split across variations — archiving shifts everyone to `defaultValue`, which is a change for treatment-group users.
 
 Surface a table:
 
@@ -295,7 +311,10 @@ Print a summary:
 
 ## Handoffs
 
-- `flag-discovery` — for finding flags to clean up (audit before cleanup). Path C is the natural caller.
+- `flag-search` — for finding and auditing stale flags before cleanup (Path C in flag-search is the natural caller).
+- `flag-graph` — to check what depends on a flag before archiving or deleting it.
 - `flag-targeting` — if the user really wants to change the flag's behavior rather than remove it.
+- `flag-revisions` — to check for open drafts that must be resolved before archiving.
+- `flag-publish` — handles the approval-required (5a) and merge-conflict (5b) branches on archive.
 - `experiment-stop` — must precede cleanup of a flag wired to a running experiment.
 - Manual UI step (no skill): unarchiving an archived-but-not-yet-deleted flag — done at `<host>/features/<flag-id>`. The skill's rollback step handles the in-session case; outside the session, the user falls back to the UI.

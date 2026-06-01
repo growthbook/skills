@@ -1,6 +1,6 @@
 ---
 name: flag-create
-description: Create a new feature flag in GrowthBook via the REST API. Use when the user asks to "create a feature flag", "add a flag for X", "wrap this in a feature flag", "I need a flag to gate this", or "feature toggle for X". For adding rules to an existing flag, use flag-targeting. For running an A/B test, use experiment-design. For removing a flag, use flag-cleanup.
+description: Create a new feature flag in GrowthBook via the REST API. Use when the user asks to "create a feature flag", "add a flag for X", "wrap this in a feature flag", "I need a flag to gate this", or "feature toggle for X". For adding rules to an existing flag, use flag-rules. For removing a flag, use flag-cleanup.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
 ---
 
@@ -12,7 +12,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
 ## Workflow
 
-1. **Confirm intent.** Restate what the flag will gate in one sentence. Stop if the user actually wants an experiment (route to `experiment-design`) or a rule on an existing flag (route to `flag-targeting`).
+1. **Confirm intent.** Restate what the flag will gate in one sentence. Stop if the user wants to run an A/B test (route to the appropriate experiment skill based on what's already in scope) or a rule on an existing flag (route to `flag-rules`).
 
 2. **Check the key isn't taken.**
    ```bash
@@ -80,4 +80,13 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
 ## After creation
 
-The response contains the flag's full configuration. Show the user the flag ID, a reminder that it's disabled everywhere, and a link to the flag in the GrowthBook UI (`https://app.growthbook.io/features/{id}` for cloud, or the appropriate self-hosted origin).
+The response contains the flag's full configuration. Show the user the flag ID, a reminder that it's disabled everywhere, and a link to the flag in the GrowthBook UI. Derive `<host>` from `GB_API_URL` by replacing `api.` → `app.` (cloud default: `https://app.growthbook.io`). Link: `<host>/features/<flag-id>`.
+
+## Handoffs
+
+- `flag-toggle` — to enable the flag in an environment
+- `flag-rules` — to add rules (routes to the appropriate rule type skill)
+- `flag-default-value` — to change the fallback value served when no rules match
+- `flag-metadata` — to set project, tags, description, or owner after creation
+- `flag-experiment` — to wire this flag to an A/B experiment
+- `experiment-design` — if the user actually wants a full A/B test (create experiment first, flag second)
