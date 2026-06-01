@@ -8,7 +8,7 @@ allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
 
 Update the administrative metadata of an existing GrowthBook feature flag. Metadata changes (description, owner, project, tags, custom fields, JSON schema) go through a draft revision like all other flag changes — they need to be published before they take effect.
 
-All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It needs `GB_API_KEY` and `GB_EMAIL` set in env or written to `~/.config/growthbook/.env` by `/growthbook:setup`.
+All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It needs `GB_API_KEY` set in env or written to `~/.config/growthbook/.env` by `/growthbook:setup`.
 
 ## Required inputs
 
@@ -72,7 +72,7 @@ Metadata changes are low-risk — default to offering publish immediately. Hand 
 ## Guardrails
 
 - **Draft version threading.** If a version number is already in context from a previous write skill in this session, use it explicitly (e.g. `.../revisions/42/metadata`) instead of `new`. This keeps all changes in the same draft. Fall back to `new` when starting fresh — it auto-creates or reuses the most recently updated open draft.
-- **`owner` accepts email or `u_...` userId.** Read from `GB_EMAIL` if the user wants to assign to themselves. If the user gives a name rather than an email, ask for clarification — the API doesn't accept display names.
+- **`owner` accepts email or `u_...` userId.** Ask the user for the email or userId of the person to assign. If they want to assign it to themselves, ask for their email or userId — there's no env default to read it from. If the user gives a name rather than an email, ask for clarification — the API doesn't accept display names.
 - **`project` is an ID, not a name.** Always resolve project names via `GET /api/v1/projects` before setting. An empty string `""` clears the project association (moves the flag back to org-wide scope).
 - **`tags` replaces the full array.** It's not additive — if the flag has existing tags and the user only wants to add one, fetch the current tags first, append, and send the full updated array.
 - **`neverStale: true` opts the flag out of stale detection permanently.** Use for kill switches, ops toggles, and license gates. Warn the user: once set, it won't appear in stale-flag reports even if untouched for months.

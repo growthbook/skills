@@ -2,6 +2,14 @@
 
 All notable changes to the `growthbook` plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [1.1.0] — 2026-06-01
+
+### Removed
+- `GB_EMAIL` env var and config option. The `GB_API_KEY` PAT is tied to a GrowthBook user, so the API attributes flags and experiments the write skills create to the token's user automatically. `flag-create` and `experiment-launch` now omit `owner` from their create payloads; `flag-metadata` still accepts an explicit `owner` (email or `u_...` userId) for assigning to someone else.
+
+### Changed
+- Personal Access Token management URL corrected to `/account/personal-access-tokens` (was `/settings/keys`) in the README, `gb-setup`, and `CLAUDE.md`.
+
 ## [1.0.0] — 2026-06-01
 
 Major expansion: the feature flag side of the plugin grows from 2 skills to 19, covering the full lifecycle from draft creation through cleanup. The architecture is unchanged — all skills call the REST API through `gb-call`.

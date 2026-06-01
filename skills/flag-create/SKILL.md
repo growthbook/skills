@@ -8,7 +8,7 @@ allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
 
 Create a new feature flag in GrowthBook. We always set `{enabled: false}` for every environment explicitly in the payload, so the flag ships disabled regardless of the org's default-state-for-new-environments setting — the user must enable it after creation. Feature keys are permanent; pick the name carefully.
 
-All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It needs `GB_API_KEY` and `GB_EMAIL` — set in your shell, or written to `~/.config/growthbook/.env` by `/growthbook:setup`. If either is missing or the API key is invalid, gb-call's error message points back at `/growthbook:setup`.
+All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It needs `GB_API_KEY` — set in your shell, or written to `~/.config/growthbook/.env` by `/growthbook:setup`. If it's missing or invalid, gb-call's error message points back at `/growthbook:setup`.
 
 ## Workflow
 
@@ -40,7 +40,6 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
    ```json
    {
      "id": "<kebab-case-key>",
-     "owner": "<user email from GB_EMAIL>",
      "valueType": "boolean",
      "defaultValue": "false",
      "description": "<short description>",
@@ -63,7 +62,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 ## Guardrails
 
 - **Feature keys are permanent.** GrowthBook does not let you rename a flag's `id` after creation. Confirm the proposed name with the user before calling the API.
-- **`owner` is required by the v2 API.** Read it from `GB_EMAIL` in env. If the variable is missing, ask the user for their email and tell them to export `GB_EMAIL` alongside `GB_API_KEY` to avoid prompting next time.
+- **`owner` defaults to the token's user.** Omit `owner` from the create payload — the API attributes the flag to the user the `GB_API_KEY` belongs to. Only set `owner` explicitly (an email or `u_...` userId) if the user wants to assign the flag to someone else.
 - **ID character set: prefer kebab-case.** The v2 endpoint regex still accepts `[a-zA-Z0-9_.:|-]`, but the user-facing docs and error messages recommend `[a-zA-Z0-9_-]`. Don't propose IDs with `.`, `:`, or `|` — they may be tightened in a future version. Existing legacy keys with those characters can be left alone.
 - **Always set `{enabled: false}` explicitly per environment.** Don't rely on the org's default-state-for-new-environments setting — it's configurable and may default to enabled. Tell the user the flag is disabled everywhere; silent zero evaluation (or worse, accidentally-enabled evaluation) is a top GrowthBook footgun.
 - **`defaultValue` is always serialized as a string.** `"false"` for boolean off, `"0"` for numeric, JSON-encoded text for `json`. The API rejects non-string values.

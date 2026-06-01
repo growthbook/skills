@@ -8,8 +8,10 @@ This is the most important rule in this file.
 
 Every API payload, endpoint path, statistical recommendation, lifecycle claim, or "best practice" in any SKILL.md must be cross-checked against the canonical GrowthBook sources. The skills sit downstream of decisions made there, and have already drifted once — a 2026-05 audit found three broken endpoints, contradictory stats framing, and a regex claim that disagreed with the actual handler. **Never write or change a guardrail, payload shape, or recommendation in a skill without verifying it against at least one of these:**
 
-1. **Back-end source code** — `/Users/scott/projects/growthbook/packages/back-end/src/api/` and `/Users/scott/projects/growthbook/packages/shared/src/validators/`. The Zod validators here are the final authority on payload shapes, required fields, and accepted enum values. If docs and code disagree, the code wins.
-2. **Docusaurus docs** — `/Users/scott/projects/growthbook/docs/docs/`. The canonical source for statistical methodology, lifecycle guidance, and "best practices we learned the hard way." Map of where things live:
+These live in a local checkout of the GrowthBook monorepo, referred to below as `<growthbook>`. It's typically cloned as a sibling of this repo (i.e. `../growthbook`); if you don't find it there, ask where the checkout lives rather than guessing.
+
+1. **Back-end source code** — `<growthbook>/packages/back-end/src/api/` and `<growthbook>/packages/shared/src/validators/`. The Zod validators here are the final authority on payload shapes, required fields, and accepted enum values. If docs and code disagree, the code wins.
+2. **Docusaurus docs** — `<growthbook>/docs/docs/`. The canonical source for statistical methodology, lifecycle guidance, and "best practices we learned the hard way." Map of where things live:
 
    | Topic | Doc path |
    | --- | --- |
@@ -69,7 +71,7 @@ allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
 <one-paragraph intent: what this skill does and what it deliberately doesn't>
 
 All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`.
-It expects `GB_API_KEY` [and `GB_EMAIL`, if writing flags] in env.
+It expects `GB_API_KEY` in env.
 
 ## Workflow
 <numbered steps, with bash + JSON shown literally>
@@ -156,15 +158,15 @@ Conventions every skill must follow:
 - **Never echo `GB_API_KEY` in user-facing output.** Mask to last 4 characters when surfacing identity. The skill's stdout/stderr lands in the user's transcript.
 - **Some GrowthBook API responses contain secrets** (SDK keys, webhook signing keys, etc.). The current eight skills don't hit those endpoints. A future skill that does must filter the response before surfacing — don't dump the raw body to the user.
 - **The `gb-setup` flow names the transcript-exposure risk explicitly** before the user pastes. Any future skill that prompts for a secret must do the same; users deserve to know before they paste.
-- **Recommend scoped, revocable PATs** over personal admin tokens. If a value is ever exposed, the only effective fix is rotation at `<host>/settings/keys`.
+- **Recommend scoped, revocable PATs** over personal admin tokens. If a value is ever exposed, the only effective fix is rotation at `<host>/account/personal-access-tokens`.
 
 ## Env var contract
 
-Three vars drive every skill: `GB_API_KEY` (required), `GB_EMAIL` (required by write skills — accepts an email or a `u_...` userId), `GB_API_URL` (self-hosted only). `gb-call` reads them from `process.env` first, then falls back to `~/.config/growthbook/.env` if a var is unset. **Env always wins over the file** — useful for CI and one-off overrides.
+Two vars drive every skill: `GB_API_KEY` (required), `GB_API_URL` (self-hosted only). The PAT is tied to a GrowthBook user, so write skills let the API attribute new flags/experiments to the token's user — there is no separate owner var to set. `gb-call` reads them from `process.env` first, then falls back to `~/.config/growthbook/.env` if a var is unset. **Env always wins over the file** — useful for CI and one-off overrides.
 
 - Users get the file via `/growthbook:setup`, which validates against `GET /api/v1/projects` and writes with `chmod 600`.
 - Skills never read or write the file themselves — only `gb-call` and `gb-setup` touch it. If you find yourself adding env-var-reading logic to another skill, stop: the helper handles it.
-- New env vars should be rare. Adding one means updating `gb-setup`, `gb-call`, the README, and every skill preamble. Prefer richer existing-var semantics (e.g. `GB_EMAIL` accepting both emails and userIds) over a new variable.
+- New env vars should be rare. Adding one means updating `gb-setup`, `gb-call`, the README, and every skill preamble. Prefer richer existing-var semantics (e.g. `GB_API_KEY` accepting both PATs and Secret Keys) over a new variable.
 
 ## The helper (`scripts/gb-call`)
 
