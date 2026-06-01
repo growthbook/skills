@@ -1,7 +1,7 @@
 {
   "name": "growthbook",
   "version": "1.0.0",
-  "description": "22 agent skills for the full GrowthBook feature flag and experimentation lifecycle. Feature flag skills cover draft revisions, approvals, publishing, force/rollout targeting, timed schedules, multi-step ramps, monitored rollouts, experiment-ref wiring, dependency graphing, and stale-flag cleanup. Experiment skills cover brainstorming, statistical design, end-to-end launch, results analysis, and stopping with winner declaration. All skills call the GrowthBook REST API through a bundled Node helper — no MCP server or extra dependencies required.",
+  "description": "A suite of agent skills for the full GrowthBook feature flag and experimentation lifecycle. Feature flag skills cover draft revisions, approvals, publishing, force/rollout targeting, timed schedules, multi-step ramps, monitored rollouts, experiment-ref wiring, dependency graphing, and stale-flag cleanup. Experiment skills cover brainstorming, statistical design, end-to-end launch, results analysis, and stopping with winner declaration. All skills call the GrowthBook REST API through a bundled Node helper — no MCP server or extra dependencies required.",
   "author": {
     "name": "GrowthBook",
     "url": "https://growthbook.io"

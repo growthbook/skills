@@ -1,6 +1,8 @@
 # GrowthBook Agent Skills
 
-Agent skills for [GrowthBook](https://growthbook.io) — feature flagging and experimentation playbooks for Claude Code, Cursor, and other agent tools that follow the [Agent Skills](https://agentskills.io) standard.
+[GrowthBook](https://www.growthbook.io) is an open source Feature Flagging and Experimentation platform.
+
+Agent skills for GrowthBook — feature flagging and experimentation playbooks for Claude Code, Cursor, and other agent tools that follow the [Agent Skills](https://agentskills.io) standard.
 
 The skills call the [GrowthBook REST API](https://docs.growthbook.io/api) directly through a small bundled helper. No MCP server required.
 

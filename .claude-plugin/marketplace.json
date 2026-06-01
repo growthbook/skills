@@ -5,7 +5,7 @@
     "email": "support@growthbook.io",
     "url": "https://growthbook.io"
   },
-  "description": "22 agent skills for GrowthBook — full feature flag lifecycle (create, target, schedule, ramp, monitor, publish, clean up) and A/B experiment management (brainstorm, design, launch, analyze, stop). Calls the GrowthBook REST API directly; no MCP server required.",
+  "description": "A suite of agent skills for GrowthBook — full feature flag lifecycle (create, target, schedule, ramp, monitor, publish, clean up) and A/B experiment management (brainstorm, design, launch, analyze, stop). Calls the GrowthBook REST API directly; no MCP server required.",
   "plugins": [
     {
       "name": "growthbook",
