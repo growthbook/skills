@@ -2,7 +2,7 @@
 // gb-call — minimal REST client for the GrowthBook API.
 //
 // Every `growthbook` plugin skill calls this. Reads GB_API_KEY (and optional
-// GB_API_URL, GB_EMAIL) from env first, falling back to ~/.config/growthbook/.env
+// GB_API_URL) from env first, falling back to ~/.config/growthbook/.env
 // when env vars are unset. Env always wins over the file (POSIX convention).
 // On non-2xx, writes a targeted error to stderr that points at /growthbook:setup
 // when the failure looks like a config problem.
@@ -17,7 +17,7 @@
 //   echo '{"id":"foo","valueType":"boolean"}' | gb-call POST /api/v1/features -
 //
 // Config sources (in precedence order):
-//   1. process.env.GB_API_KEY / GB_API_URL / GB_EMAIL
+//   1. process.env.GB_API_KEY / GB_API_URL
 //   2. ~/.config/growthbook/.env  (KEY=value per line; written by /growthbook:setup)
 
 const { readFileSync, existsSync } = require("node:fs");
@@ -113,7 +113,6 @@ function explainHttpError(status, statusText, responseBody, requestUrl) {
     try { return new URL(requestUrl).host; } catch { return requestUrl; }
   })();
   const isCloud = host === "api.growthbook.io";
-  const lower = (responseBody || "").toLowerCase();
 
   if (status === 401 || status === 403) {
     return (
@@ -129,14 +128,6 @@ function explainHttpError(status, statusText, responseBody, requestUrl) {
       `Got 404 from api.growthbook.io. If you're using a self-hosted GrowthBook instance,\n` +
       `run /growthbook:setup to configure GB_API_URL.\n` +
       (responseBody ? responseBody + "\n" : "")
-    );
-  }
-  if (status === 400 && /owner is required|owner.*required/.test(lower)) {
-    return (
-      `HTTP 400 on ${upperMethod} ${requestUrl}\n` +
-      `The v2 features API requires an owner, but GB_EMAIL is not set.\n` +
-      `Run /growthbook:setup to configure it (accepts an email or a u_... userId).\n` +
-      responseBody + "\n"
     );
   }
   if (status === 429) {

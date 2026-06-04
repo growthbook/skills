@@ -81,18 +81,16 @@ The quickest path is to run the setup skill:
 /growthbook:setup
 ```
 
-It walks you through your API key, owner identifier, and (for self-hosted) your API URL — then validates against the live API and writes `~/.config/growthbook/.env` with `chmod 600`. Every other skill reads that file automatically.
+It walks you through your API key and (for self-hosted) your API URL — then validates against the live API and writes `~/.config/growthbook/.env` with `chmod 600`. Every other skill reads that file automatically.
 
 **Prefer shell-rc?** You can export the variables instead. The skills read environment variables first; the file is only consulted when an env var is unset.
 
 ```bash
 export GB_API_KEY=<your-key>             # required: PAT or Secret Key
-export GB_EMAIL=you@example.com          # required for write skills
-                                         # (accepts an email OR a u_... userId)
 export GB_API_URL=https://api.your-host  # self-hosted only
 ```
 
-Get a Personal Access Token from [`app.growthbook.io/settings/keys`](https://app.growthbook.io/settings/keys). The v2 features API requires an `owner` on every created flag — that's what `GB_EMAIL` provides.
+Get a Personal Access Token from [`app.growthbook.io/account/personal-access-tokens`](https://app.growthbook.io/account/personal-access-tokens). The token is tied to your GrowthBook user, so flags and experiments the write skills create are attributed to you automatically — no separate owner setting needed.
 
 ### 3. Verify
 
@@ -188,7 +186,7 @@ CHANGELOG.md
 
 - **Where the key lives.** `gb-setup` writes `~/.config/growthbook/.env` inside a `0700` directory at file mode `0600` — owner-read/write only. Environment variables take precedence over the file, so CI and one-off overrides keep working.
 - **Pasting a key into chat.** The value you give `gb-setup` lands in your local transcript and is sent to Anthropic as part of the conversation; it cannot be retroactively masked. Generate a fresh PAT for the plugin rather than reusing your personal admin token — that way you can revoke it independently if anything goes wrong.
-- **Revoking a leaked key.** Visit [`app.growthbook.io/settings/keys`](https://app.growthbook.io/settings/keys) (or your self-hosted equivalent) and revoke. Then re-run `/growthbook:setup` with the replacement.
+- **Revoking a leaked key.** Visit [`app.growthbook.io/account/personal-access-tokens`](https://app.growthbook.io/account/personal-access-tokens) (or your self-hosted equivalent) and revoke. Then re-run `/growthbook:setup` with the replacement.
 - **What the helper rejects.** `gb-call` refuses values containing whitespace or control characters (CRLF in `GB_API_KEY` would inject headers); `gb-setup` refuses `http://` URLs and URLs with a path component.
 
 ## Contributing

@@ -23,13 +23,12 @@ gb-call <METHOD> <PATH> [BODY_FILE | -]
 
 `gb-call` reads config from two sources, in precedence order:
 
-1. **Process environment** — `GB_API_KEY`, `GB_API_URL`, `GB_EMAIL`. Always wins. Useful for CI and one-off overrides.
+1. **Process environment** — `GB_API_KEY`, `GB_API_URL`. Always wins. Useful for CI and one-off overrides.
 2. **`~/.config/growthbook/.env`** — same keys, `KEY=value` per line, no quoting. Written by `/growthbook:setup`. Only consulted when the corresponding env var is unset.
 
 | Var | Required | Default | Notes |
 | --- | --- | --- | --- |
-| `GB_API_KEY` | yes | — | PAT or Secret Key. Sent as `Authorization: Bearer <key>`. |
-| `GB_EMAIL` | for write skills | — | Used as the `owner` on v2 feature flags. Email or `u_...` userId. Read-only skills don't need it. |
+| `GB_API_KEY` | yes | — | PAT or Secret Key. Sent as `Authorization: Bearer <key>`. The token's user is the default `owner` for flags/experiments the write skills create. |
 | `GB_API_URL` | no | `https://api.growthbook.io` | Self-hosted instances point here. Trailing slashes are stripped. |
 
 ### Output
@@ -47,7 +46,6 @@ gb-call <METHOD> <PATH> [BODY_FILE | -]
 | `GB_API_KEY` not set in env *and* not in `~/.config/growthbook/.env` | `/growthbook:setup` |
 | `401` / `403` from API | `/growthbook:setup` (key invalid, expired, or revoked) |
 | `404` on `api.growthbook.io` | `/growthbook:setup` (likely self-hosted, configure `GB_API_URL`) |
-| `400` with body containing `owner is required` | `/growthbook:setup` (configure `GB_EMAIL`) |
 | `429` | rate-limit notice (60 rpm); retry after a moment |
 | Anything else | raw status + body |
 

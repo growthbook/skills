@@ -119,7 +119,7 @@ Report status and what needs to happen next:
 
 ## Guardrails
 
-- **Self-approval is blocked server-side.** Before calling submit-review, check whether the current user (`GB_EMAIL`) created the draft. If they did, halt: "You created this draft — a different team member must approve it."
+- **Self-approval is blocked server-side.** The API rejects a review submitted by the draft's own author. If the user mentions they created the draft, halt before calling submit-review: "You created this draft — a different team member must approve it." Otherwise let the server enforce it and surface the error if it fires.
 - **Can only request-review on `draft` or `changes-requested` status.** Surface the actual status if the user tries on anything else.
 - **Can only submit-review on `pending-review` status.** Surface the actual status if it doesn't match.
 - **`changes-requested` is not discarded.** The draft still exists; the author edits it and re-requests review via Path A. Don't suggest discarding unless the author explicitly wants to abandon the changes.
