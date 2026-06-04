@@ -122,7 +122,7 @@ Each skill's description names its trigger phrases and routes to sibling skills 
 
 ## How it works
 
-The plugin bundles a small Node helper (`scripts/gb-call`) that handles auth, base URL, and error reporting for every REST request. Skills call it via Bash:
+The plugin bundles a small Node helper (`scripts/gb-call`) that handles auth, base URL, and error reporting for every REST request. The helper is also bundled per-skill at `skills/<name>/scripts/gb-call` so agents installed via `npx skills install` (Cursor, Codex, etc.) can resolve it relative to the skill directory. Skills call it via Bash:
 
 ```bash
 gb-call GET /api/v2/features
@@ -141,6 +141,9 @@ scripts/
   gb-call                              # Node REST helper (zero deps, Node 18+)
   README.md                            # gb-call usage, config sources, error catalog
 skills/
+  <name>/
+    SKILL.md                           # workflow + guardrails
+    scripts/gb-call                    # per-skill copy for npx-installed agents
   gb-setup/SKILL.md                    # one-time onboarding
 
   # Revision lifecycle

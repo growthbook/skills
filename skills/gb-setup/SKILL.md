@@ -12,6 +12,8 @@ The API key is a Personal Access Token (PAT) tied to a GrowthBook user, so the A
 
 `gb-call` reads this file when the corresponding environment variables aren't set, so the user gets a one-time config rather than editing their shell rc. Real environment variables always win over the file — useful for CI and one-off overrides.
 
+Below, `gb-call` refers to the bundled helper. Under the Claude Code plugin install, it lives at `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call` (the plugin root). Under `npx skills install`, it lives at `scripts/gb-call` relative to this skill's directory.
+
 ## Workflow
 
 1. **Detect current state.** Check what's already configured. Don't ask the user for values they already have unless they want to change them.
@@ -70,7 +72,7 @@ The API key is a Personal Access Token (PAT) tied to a GrowthBook user, so the A
    ```bash
    GB_API_KEY='<value>' \
    GB_API_URL='<value or empty>' \
-     ${CLAUDE_PLUGIN_ROOT}/scripts/gb-call GET /api/v1/projects
+     gb-call GET /api/v1/projects
    ```
 
    Interpret the result:

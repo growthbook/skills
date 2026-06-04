@@ -43,14 +43,15 @@ The Guardrails section of each SKILL.md is an API-quirk catalog disguised as pol
 
 ## What this repo is
 
-A Claude Code plugin (`growthbook`) that ships agent skills for GrowthBook feature flags and experimentation. Skills shell out to a small Node helper (`scripts/gb-call`) that calls the GrowthBook REST API directly. No MCP server, no build step, no runtime deps beyond Node 18+.
+A Claude Code plugin (`growthbook`) that also ships as standalone agent skills for GrowthBook feature flags and experimentation. Skills shell out to a small Node helper (`scripts/gb-call`) that calls the GrowthBook REST API directly. The helper is also bundled per-skill at `skills/<name>/scripts/gb-call` so agents installed via `npx skills install` (Cursor, Codex, etc.) can resolve it relative to the skill directory. No MCP server, no build step, no runtime deps beyond Node 18+.
 
 ## Architecture in one breath
 
 ```
-skills/<name>/SKILL.md   ← workflow + guardrails (the entire skill)
-scripts/gb-call          ← only thing skills are allowed to shell out to
-.claude-plugin/          ← plugin.json (manifest) + marketplace.json (listing)
+skills/<name>/SKILL.md             ← workflow + guardrails (the entire skill)
+skills/<name>/scripts/gb-call      ← per-skill copy; npx-installed agents use this
+scripts/gb-call                    ← canonical helper; Claude plugin invokes this
+.claude-plugin/                    ← plugin.json (manifest) + marketplace.json (listing)
 ```
 
 Skills are pure markdown. The helper is the only executable code in the plugin. This is intentional — the v0.2.0 commit (`daac766`) pivoted away from MCP to keep the surface that small.
@@ -70,8 +71,7 @@ allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
 
 <one-paragraph intent: what this skill does and what it deliberately doesn't>
 
-All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`.
-It expects `GB_API_KEY` in env.
+All API calls go through the bundled helper. Under the Claude Code plugin install, it lives at `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call` (the plugin root). Under `npx skills install`, it lives at `scripts/gb-call` relative to this skill's directory. It expects `GB_API_KEY` in env.
 
 ## Workflow
 <numbered steps, with bash + JSON shown literally>
@@ -91,7 +91,7 @@ It expects `GB_API_KEY` in env.
 - **`description` does routing, not labeling.** Include (a) concrete trigger phrases the user might say, and (b) explicit "For X, use Y skill" handoff hints. Look at any existing skill — the description is dense by design. It's what teaches Claude when *not* to fire.
 - **`allowed-tools` is the security model.** Pin to `Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)` and nothing else, unless the skill genuinely needs another binary. Two existing exceptions: `experiment-analyze` allows `Bash(sleep *)` for its poll loop; `gb-setup` allows four file-management commands to write `~/.config/growthbook/.env`. New tool grants need a defensible reason.
 - **When you do grant another binary, prefer literal full-command patterns over wildcards.** `Bash(chmod 600 ~/.config/growthbook/.env)` is a much narrower grant than `Bash(chmod *)` — the latter would allow `chmod 777 ~/.ssh/authorized_keys` if a prompt-injected response asked Claude to run it. Wildcards are only appropriate when the variable portion is genuinely unbounded (e.g. `Bash(sleep *)` where the arg is a duration). For everything else, write out each accepted invocation as its own allowlist entry.
-- **Use `${CLAUDE_PLUGIN_ROOT}` for paths**, never relative paths. It resolves to the plugin's install directory at runtime.
+- **Use `${CLAUDE_PLUGIN_ROOT}` for paths in `allowed-tools` and the Claude-install line of the intro paragraph.** It resolves to the plugin's install directory at runtime. The intro paragraph also documents the `scripts/gb-call` path relative to the skill directory for `npx skills install` agents — see the SKILL.md template above. `allowed-tools` itself stays Claude-pinned; other agents ignore it.
 
 ### Workflow conventions
 
@@ -182,6 +182,16 @@ Resist the urge to add features. `scripts/README.md` lists what is **not in scop
 - No multi-profile support (one `~/.config/growthbook/.env`, no `GB_PROFILE`)
 
 Each of these gets added only when a real skill needs it. `experiment-analyze` will probably be the first caller that justifies retry/backoff.
+
+## Per-skill helper copies (stopgap)
+
+The helper lives in two places: the canonical `scripts/gb-call` (what the Claude plugin invokes via `${CLAUDE_PLUGIN_ROOT}`), and a per-skill copy at `skills/<name>/scripts/gb-call` (what agents installed via `npx skills install` resolve relative to the skill directory). The duplication exists because `${CLAUDE_PLUGIN_ROOT}` is Claude-specific and doesn't resolve in Cursor, Codex, or other agents.
+
+**Workflow:** edit canonical `scripts/gb-call`, then copy the new contents into every `skills/<name>/scripts/gb-call` and `chmod 755` each one — by hand, or by asking Claude to do it. Non-Claude agents invoke the helper via `./scripts/gb-call`, so the executable bit matters. We expect this manual sync to happen once or twice at most before the CLI replacement lands.
+
+**No CI, no sync script — by design.** This is an intentionally minimal stopgap until a proper CLI replaces the whole install/distribution architecture. If you find yourself wanting to add tooling around the duplication (a sync script, a CI drift check, a refactor that collapses the per-skill copies), **don't**. Let the next CLI iteration solve it cleanly rather than half-solving it in the stopgap.
+
+If the per-skill copies drift from the canonical, npx-installed agents get the stale helper while Claude users get the fresh one. The bar before merging a `scripts/gb-call` change is "all 23 per-skill copies are byte-identical and `+x`."
 
 ## Naming and lifecycle
 

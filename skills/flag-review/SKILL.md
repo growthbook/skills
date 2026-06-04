@@ -10,7 +10,7 @@ Request and submit approval reviews on GrowthBook feature flag draft revisions. 
 
 Two roles use this skill: the **drafter** (requests a review, can't self-approve) and the **reviewer** (submits the review decision).
 
-All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It needs `GB_API_KEY` set in env or written to `~/.config/growthbook/.env` by `/growthbook:setup`.
+All API calls go through the bundled helper. Under the Claude Code plugin install, it lives at `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call` (the plugin root). Under `npx skills install`, it lives at `scripts/gb-call` relative to this skill's directory. It needs `GB_API_KEY` set in env or written to `~/.config/growthbook/.env` by `/growthbook:setup`.
 
 ## Approval flow
 

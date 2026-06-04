@@ -1,0 +1,160 @@
+#!/usr/bin/env node
+// gb-call — minimal REST client for the GrowthBook API.
+//
+// Every `growthbook` plugin skill calls this. Reads GB_API_KEY (and optional
+// GB_API_URL) from env first, falling back to ~/.config/growthbook/.env
+// when env vars are unset. Env always wins over the file (POSIX convention).
+// On non-2xx, writes a targeted error to stderr that points at /growthbook:setup
+// when the failure looks like a config problem.
+//
+// Usage:
+//   gb-call <METHOD> <PATH> [BODY_FILE | -]
+//
+// Examples:
+//   gb-call GET /api/v1/features
+//   gb-call GET '/api/v1/features?limit=50&projectId=prj_abc'
+//   gb-call POST /api/v1/features ./payload.json
+//   echo '{"id":"foo","valueType":"boolean"}' | gb-call POST /api/v1/features -
+//
+// Config sources (in precedence order):
+//   1. process.env.GB_API_KEY / GB_API_URL
+//   2. ~/.config/growthbook/.env  (KEY=value per line; written by /growthbook:setup)
+
+const { readFileSync, existsSync } = require("node:fs");
+const { homedir } = require("node:os");
+const { join } = require("node:path");
+
+function die(msg, code = 2) {
+  process.stderr.write(msg.endsWith("\n") ? msg : msg + "\n");
+  process.exit(code);
+}
+
+// Parse KEY=value lines from ~/.config/growthbook/.env. Ignore blanks and #-comments.
+// No quoting handling — values are verbatim from the first `=` to end of line.
+function loadEnvFile() {
+  const path = join(homedir(), ".config", "growthbook", ".env");
+  if (!existsSync(path)) return {};
+  const out = {};
+  for (const raw of readFileSync(path, "utf8").split("\n")) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq <= 0) continue;
+    const key = line.slice(0, eq).trim();
+    const value = line.slice(eq + 1).trim();
+    if (key) out[key] = value;
+  }
+  return out;
+}
+
+const fileEnv = loadEnvFile();
+const apiKey = process.env.GB_API_KEY || fileEnv.GB_API_KEY;
+const apiUrl = process.env.GB_API_URL || fileEnv.GB_API_URL || "https://api.growthbook.io";
+
+if (!apiKey) {
+  die(
+    "GB_API_KEY is not set.\n" +
+      "Run /growthbook:setup to configure it, or export GB_API_KEY in your shell.",
+  );
+}
+
+// Reject values containing whitespace or control characters. Real GrowthBook
+// PATs are alphanumeric with `_`/`-`, and a URL has no business containing
+// either. CRLF in apiKey would inject arbitrary headers via the Authorization
+// header; junk in apiUrl would silently corrupt every request.
+const CONTROL_RE = /[\s\x00-\x1f\x7f]/;
+if (CONTROL_RE.test(apiKey)) {
+  die(
+    "GB_API_KEY contains whitespace or control characters.\n" +
+      "Re-run /growthbook:setup to set a clean value.",
+  );
+}
+if (CONTROL_RE.test(apiUrl)) {
+  die(
+    "GB_API_URL contains whitespace or control characters.\n" +
+      "Re-run /growthbook:setup to set a clean value.",
+  );
+}
+
+const base = apiUrl.replace(/\/$/, "");
+
+const [method, path, bodyArg] = process.argv.slice(2);
+if (!method || !path) {
+  die("Usage: gb-call <METHOD> <PATH> [BODY_FILE | -]");
+}
+
+const upperMethod = method.toUpperCase();
+if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(upperMethod)) {
+  die(`Unknown method: ${method}`);
+}
+
+let body;
+if (bodyArg === "-") {
+  body = readFileSync(0, "utf8");
+} else if (bodyArg) {
+  try {
+    body = readFileSync(bodyArg, "utf8");
+  } catch (e) {
+    die(`Cannot read body file ${bodyArg}: ${e.message}`);
+  }
+}
+
+const url = `${base}${path.startsWith("/") ? path : "/" + path}`;
+const headers = {
+  Authorization: `Bearer ${apiKey}`,
+  Accept: "application/json",
+};
+if (body) headers["Content-Type"] = "application/json";
+
+// Translate common HTTP failures into actionable hints. Each branch returns
+// the full message that gets written to stderr before exiting.
+function explainHttpError(status, statusText, responseBody, requestUrl) {
+  const host = (() => {
+    try { return new URL(requestUrl).host; } catch { return requestUrl; }
+  })();
+  const isCloud = host === "api.growthbook.io";
+
+  if (status === 401 || status === 403) {
+    return (
+      `HTTP ${status} ${statusText} on ${upperMethod} ${requestUrl}\n` +
+      `Authentication failed. Your GB_API_KEY may be invalid, expired, or revoked.\n` +
+      `Run /growthbook:setup to refresh it.\n` +
+      (responseBody ? responseBody + "\n" : "")
+    );
+  }
+  if (status === 404 && isCloud) {
+    return (
+      `HTTP 404 on ${upperMethod} ${requestUrl}\n` +
+      `Got 404 from api.growthbook.io. If you're using a self-hosted GrowthBook instance,\n` +
+      `run /growthbook:setup to configure GB_API_URL.\n` +
+      (responseBody ? responseBody + "\n" : "")
+    );
+  }
+  if (status === 429) {
+    return (
+      `HTTP 429 ${statusText} on ${upperMethod} ${requestUrl}\n` +
+      `Rate limited (60 requests/minute). Wait a moment and retry.\n` +
+      (responseBody ? responseBody + "\n" : "")
+    );
+  }
+  // Fall-through — show the raw error.
+  return (
+    `HTTP ${status} ${statusText} on ${upperMethod} ${requestUrl}\n` +
+    (responseBody ? responseBody + "\n" : "")
+  );
+}
+
+(async () => {
+  let res;
+  try {
+    res = await fetch(url, { method: upperMethod, headers, body });
+  } catch (e) {
+    die(`Request failed: ${e.message}`, 1);
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    process.stderr.write(explainHttpError(res.status, res.statusText, text, url));
+    process.exit(1);
+  }
+  process.stdout.write(text);
+})();
