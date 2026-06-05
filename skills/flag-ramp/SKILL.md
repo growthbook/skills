@@ -52,31 +52,30 @@ See Path D for how to submit approvals via API once the interval has cleared.
 
 ```json
 {
+  "startActions": [
+    { "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 0 } }
+  ],
   "steps": [
     {
       "interval": 86400,
-      "actions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 0.05 } }]
+      "actions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 0.1 } }]
     },
     {
       "interval": 86400,
-      "actions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 0.25 } }]
-    },
-    {
-      "interval": 86400,
-      "actions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 0.50 } }]
-    },
-    {
-      "interval": 86400,
-      "actions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 1.0 } }]
+      "holdConditions": { "requiresApproval": true },
+      "actions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 0.5 } }]
     }
   ],
-  "endActions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 1.0 } }],
-  "startActions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": <current-coverage> } }]
+  "endActions": [
+    { "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 1.0 } }
+  ]
 }
 ```
 
+`startActions` = the state applied when the ramp begins and restored on rollback. Set this to the rule's **current coverage** before the ramp starts — typically 0 for a new rule.
 `endActions` = final state after all steps complete (typically 100% coverage).
-`startActions` = rollback state (the rule's coverage before the ramp started).
+
+To add guardrail metric monitoring to the ramp, add a `monitoringConfig` block and `"monitored": true` on each step — see `flag-monitoring`.
 
 Omit `startDate` and `cutoffDate` unless the user explicitly requests them — see Guardrails.
 
@@ -126,8 +125,8 @@ echo '{
         "actions": [{ "targetType": "feature-rule", "targetId": "new", "patch": { "coverage": 1.0 } }]
       }
     ],
-    "endActions": [{ "targetType": "feature-rule", "targetId": "new", "patch": { "coverage": 1.0 } }],
-    "startActions": [{ "targetType": "feature-rule", "targetId": "new", "patch": { "coverage": 0.0 } }]
+    "startActions": [{ "targetType": "feature-rule", "targetId": "new", "patch": { "coverage": 0.0 } }],
+    "endActions": [{ "targetType": "feature-rule", "targetId": "new", "patch": { "coverage": 1.0 } }]
   }
 }' | gb-call POST /api/v2/features/<flag-id>/revisions/new/rules -
 ```

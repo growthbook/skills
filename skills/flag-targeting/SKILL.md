@@ -1,6 +1,6 @@
 ---
 name: flag-targeting
-description: Add, edit, or remove force-value or percentage-rollout rules on a GrowthBook feature flag, including conditions, saved groups, and rule-level prerequisites. Use when the user says "add a rule to flag Y", "release this flag to 10% of users", "turn this on for beta testers", "target US users", "add a condition to rule X", "edit the targeting condition on flag Z", "disable this rule", "remove the rule", "only for logged-in users", or "target users matching attribute Y". For environment kill switches (enable/disable the whole flag in an env), use flag-toggle. For experiment rules, use flag-experiment. For ramp schedules, use flag-ramp. For feature-level prerequisites, use flag-prerequisites.
+description: Add, edit, or remove force-value or percentage-rollout rules on a GrowthBook feature flag, including conditions, saved groups, and rule-level prerequisites. Use when the user says "add a rule to flag Y", "release this flag to 10% of users", "turn this on for beta testers", "target US users", "add a condition to rule X", "edit the targeting condition on flag Z", "disable this rule", "remove the rule", "only for logged-in users", or "target users matching attribute Y". For environment kill switches (enable/disable the whole flag in an env), use flag-toggle. For experiment rules, use flag-experiment. For ramp schedules, use flag-ramp. For monitored rollouts with guardrail metrics, use flag-monitoring. For feature-level prerequisites, use flag-prerequisites.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
 ---
 
@@ -325,6 +325,8 @@ Hand off to flag-publish. It handles:
 - `flag-toggle` — for environment-level enable/disable (kill switch)
 - `flag-rules` — for reordering rules or routing to other rule types
 - `flag-experiment` — for adding experiment-ref or inline experiment rules
+- `flag-ramp` — to progressively increase coverage on a rollout rule over time
+- `flag-monitoring` — to add guardrail metric monitoring to a rollout
 - `flag-prerequisites` — for feature-level prerequisite gates
 - `flag-search` — to resolve a flag ID from a description
 - `flag-publish` — to publish the draft (handles approval and merge conflicts)

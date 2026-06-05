@@ -43,17 +43,20 @@ The Guardrails section of each SKILL.md is an API-quirk catalog disguised as pol
 
 ## What this repo is
 
-A Claude Code plugin (`growthbook`) that ships agent skills for GrowthBook feature flags and experimentation. Skills shell out to a small Node helper (`scripts/gb-call`) that calls the GrowthBook REST API directly. No MCP server, no build step, no runtime deps beyond Node 18+.
+A Claude Code plugin (`growthbook`) that also ships as standalone agent skills for GrowthBook feature flags and experimentation. Skills shell out to a small Node helper (`scripts/gb-call`) that calls the GrowthBook REST API directly. No MCP server, no build step, no runtime deps beyond Node 18+.
 
 ## Architecture in one breath
 
 ```
-skills/<name>/SKILL.md   ← workflow + guardrails (the entire skill)
-scripts/gb-call          ← only thing skills are allowed to shell out to
-.claude-plugin/          ← plugin.json (manifest) + marketplace.json (listing)
+skills/<name>/SKILL.md             ← workflow + guardrails (the entire skill)
+skills/<name>/scripts/gb-call      ← symlink → ../../scripts/gb-call (for npx-installed agents)
+scripts/gb-call                    ← canonical helper; Claude plugin invokes this
+.claude-plugin/                    ← plugin.json (manifest) + marketplace.json (listing)
 ```
 
 Skills are pure markdown. The helper is the only executable code in the plugin. This is intentional — the v0.2.0 commit (`daac766`) pivoted away from MCP to keep the surface that small.
+
+The per-skill `scripts/gb-call` entries are git symlinks — edit only the canonical `scripts/gb-call`. Never create copies in skill directories.
 
 ## The skill contract
 
@@ -70,8 +73,7 @@ allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
 
 <one-paragraph intent: what this skill does and what it deliberately doesn't>
 
-All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`.
-It expects `GB_API_KEY` in env.
+All API calls go through the bundled helper. Under the Claude Code plugin install, it lives at `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call` (the plugin root). Under `npx skills install`, it lives at `scripts/gb-call` relative to this skill's directory. It expects `GB_API_KEY` in env.
 
 ## Workflow
 <numbered steps, with bash + JSON shown literally>
