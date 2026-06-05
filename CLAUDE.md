@@ -56,7 +56,7 @@ scripts/gb-call                    ← canonical helper; Claude plugin invokes t
 
 Skills are pure markdown. The helper is the only executable code in the plugin. This is intentional — the v0.2.0 commit (`daac766`) pivoted away from MCP to keep the surface that small.
 
-Each `skills/<name>/scripts/gb-call` is a **git symlink** pointing to `../../../scripts/gb-call`. When agents install via `npx skills install` (Cursor, Codex, etc.), the installer dereferences symlinks (`cp` with `dereference: true`) and writes a real file at the destination — the agent sees a plain executable and has no knowledge of the symlink. Edit only the canonical `scripts/gb-call`; the per-skill symlinks update automatically.
+The per-skill `scripts/gb-call` entries are git symlinks — edit only the canonical `scripts/gb-call`. Never create copies in skill directories.
 
 ## The skill contract
 
