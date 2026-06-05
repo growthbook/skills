@@ -179,4 +179,5 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
 - `experiment-stop` — when the user is ready to act on a conclusive result.
 - `flag-targeting` — after stopping with a winner, the linked flag (if any) needs its `experiment-ref` rule updated or removed.
+- `experiment-brainstorm` — to ground ideas for the next test in results from past experiments.
 - `experiment-statistics` (when shipped) — for deeper questions about CUPED, sequential testing, multiple comparisons, dimensional analysis.

@@ -112,7 +112,7 @@ The API key is a Personal Access Token (PAT) tied to a GrowthBook user, so the A
    - What's in it (mask the API key — show only last 4).
    - That env vars take precedence over the file (so CI / one-off overrides keep working).
    - That re-running `/growthbook:setup` updates the file.
-   - The next thing they probably want: `/growthbook:flag-discovery` to see their flags, or `/growthbook:experiment-brainstorm` to look at past results.
+   - The next thing they probably want: `/growthbook:flag-search` to see their flags, or `/growthbook:experiment-brainstorm` to look at past results.
 
 ## Guardrails
 
@@ -145,6 +145,6 @@ Lines starting with `#` are comments. Blank lines are ignored. No quoting; value
 
 ## Handoffs
 
-- `flag-discovery` — natural first call after setup completes (no required inputs, exercises the new config).
+- `flag-search` — natural first call after setup completes (no required inputs, exercises the new config).
 - `experiment-brainstorm` — if the org already has stopped experiments, surfaces them immediately.
 - Any skill that emits a config-related error points back here.

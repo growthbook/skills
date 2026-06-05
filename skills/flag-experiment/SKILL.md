@@ -91,6 +91,7 @@ The server allows patching `enabled`, `condition`, `savedGroups`, `prerequisites
 
 ## Handoffs
 
+- `flag-search` — to find a flag ID when you only have a name or description
 - `experiment-launch` — to create a new experiment and wire it to a flag end-to-end
 - `flag-targeting` — to edit the targeting conditions, scope, or saved groups on an existing experiment-ref rule
 - `flag-rules` — to reorder or delete experiment rules
