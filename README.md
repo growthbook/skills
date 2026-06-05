@@ -66,12 +66,20 @@ Every flag change goes through a draft revision before going live. These three s
 
 ### 1. Install the plugin
 
+**Claude Code:**
+
 ```text
 /plugin marketplace add growthbook/skills
 /plugin install growthbook@growthbook-skills
 ```
 
-Restart Claude Code if the skills don't appear immediately. Node 18+ is required (it's what Claude Code already runs on, so this is usually satisfied).
+**Cursor, Codex, Warp, Zed, and other [agentskills.io](https://agentskills.io)-compatible agents:**
+
+```bash
+npx skills add growthbook/skills -g
+```
+
+Drop `-g` to install at project scope instead of globally. Restart your agent if the skills don't appear immediately. Node 18+ is required (which is what most agents already run on).
 
 ### 2. Configure credentials
 
