@@ -46,28 +46,31 @@ gb-call GET '/api/v1/metrics?datasourceId=<ds-id>'
 
 ```bash
 echo '{
+  "startActions": [
+    { "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 0 } }
+  ],
   "steps": [
     {
       "interval": 86400,
-      "actions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 0.05 } }]
+      "monitored": true,
+      "actions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 0.1 } }]
     },
     {
       "interval": 86400,
-      "actions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 0.25 } }]
-    },
-    {
-      "interval": 86400,
-      "actions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 1.0 } }]
+      "monitored": true,
+      "holdConditions": { "requiresApproval": true },
+      "actions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 0.5 } }]
     }
   ],
-  "endActions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 1.0 } }],
-  "startActions": [{ "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": <pre-ramp-coverage> } }],
+  "endActions": [
+    { "targetType": "feature-rule", "targetId": "<rule-id>", "patch": { "coverage": 1.0 } }
+  ],
   "monitoringConfig": {
     "datasourceId": "<ds-id>",
     "exposureQueryId": "<query-id>",
     "guardrailMetricIds": ["<metric-id>"],
     "signalMetricIds": ["<metric-id>"],
-    "autoUpdate": false,
+    "autoUpdate": true,
     "srmAction": "hold",
     "noTrafficAction": "warn",
     "noTrafficGracePeriodHours": 24,
@@ -76,7 +79,9 @@ echo '{
 }' | gb-call PUT /api/v2/features/<flag-id>/revisions/new/rules/<rule-id>/ramp-schedule -
 ```
 
-`autoUpdate: true` is the default — the system automatically rolls back on guardrail failure. Mention `autoUpdate: false` only if the user wants to control monitoring cadence manually or is concerned about query costs.
+`startActions` sets coverage to 0 (the rollback anchor). `monitored: true` on a step tells the ramp to wait for monitoring results before auto-advancing — it only has effect when `monitoringConfig` is present. The `holdConditions.requiresApproval` on step 2 adds a human gate after the interval elapses and monitoring clears.
+
+`autoUpdate: true` rolls back automatically on guardrail failure. Mention `autoUpdate: false` only if the user wants to control monitoring cadence manually or is concerned about query costs.
 
 Omit `startDate` unless the user explicitly requests a delayed start.
 
