@@ -22,10 +22,12 @@ Before configuring, collect:
 
 ```bash
 # Resolve datasource and exposure query IDs:
-gb-call GET /api/v1/datasources
+gb-call GET /api/v1/data-sources
 
-# Resolve metric IDs:
-gb-call GET '/api/v1/metrics?datasourceId=<ds-id>'
+# Resolve metric IDs — query both: fact metrics and legacy metrics are separate endpoints,
+# and most orgs keep guardrail/signal metrics as fact metrics:
+gb-call GET '/api/v1/fact-metrics?datasourceId=<ds-id>&limit=100'
+gb-call GET '/api/v1/metrics?datasourceId=<ds-id>&limit=100'
 ```
 
 ## Workflow
@@ -38,8 +40,9 @@ Build the full ramp schedule payload with `monitoringConfig` included in a singl
 
 **2. Collect monitoring config** (see Required inputs above):
 ```bash
-gb-call GET /api/v1/datasources
-gb-call GET '/api/v1/metrics?datasourceId=<ds-id>'
+gb-call GET /api/v1/data-sources
+gb-call GET '/api/v1/fact-metrics?datasourceId=<ds-id>&limit=100'
+gb-call GET '/api/v1/metrics?datasourceId=<ds-id>&limit=100'
 ```
 
 **3. PUT the full payload (steps + monitoring together):**
@@ -160,8 +163,8 @@ This skill orchestrates:
 
 **Draft (pre-publish):**
 - `GET /api/v2/features/:id` — fetch flag and current rules
-- `GET /api/v1/datasources` — resolve datasource IDs
-- `GET /api/v1/metrics` — resolve guardrail and signal metric IDs
+- `GET /api/v1/data-sources` — resolve datasource IDs
+- `GET /api/v1/fact-metrics?datasourceId=…`, `GET /api/v1/metrics?datasourceId=…` — resolve guardrail and signal metric IDs (fact metrics and legacy metrics are separate endpoints)
 - `PUT /api/v2/features/:id/revisions/new/rules/:ruleId/ramp-schedule` — create/update ramp schedule with monitoringConfig
 
 **Live ramp management:**
