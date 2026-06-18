@@ -76,10 +76,10 @@ Every flag change goes through a draft revision before going live. These three s
 **Cursor, Codex, Warp, Zed, and other [agentskills.io](https://agentskills.io)-compatible agents:**
 
 ```bash
-npx skills add growthbook/skills -g
+npx skills add growthbook/skills
 ```
 
-Drop `-g` to install at project scope instead of globally. Restart your agent if the skills don't appear immediately. Node 18+ is required (which is what most agents already run on).
+This installs the skills at project scope. Restart your agent if the skills don't appear immediately. Node 18+ is required (which is what most agents already run on).
 
 ### 2. Configure credentials
 
