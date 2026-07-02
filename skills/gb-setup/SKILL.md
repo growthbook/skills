@@ -111,7 +111,7 @@ The API key is a Personal Access Token (PAT) tied to a GrowthBook user, so the A
    - Where the file is (`~/.config/growthbook/.env`).
    - What's in it (mask the API key — show only last 4).
    - That env vars take precedence over the file (so CI / one-off overrides keep working).
-   - That re-running `/growthbook:setup` updates the file.
+   - That re-running `/growthbook:gb-setup` updates the file.
    - The next thing they probably want: `/growthbook:flag-search` to see their flags, or `/growthbook:experiment-brainstorm` to look at past results.
 
 ## Guardrails
