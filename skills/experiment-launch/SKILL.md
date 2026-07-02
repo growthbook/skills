@@ -8,7 +8,7 @@ allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
 
 Launch a GrowthBook A/B test end-to-end: create the experiment in draft, prep or reuse the feature flag, add the experiment-ref rule on a fresh draft revision, then call `/start` to publish the rule and flip the experiment to running. Handles the approval-required and pre-launch-checklist failure paths.
 
-All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It needs `GB_API_KEY` — set in your shell, or written to `~/.config/growthbook/.env` by `/growthbook:setup`. If it's missing or invalid, gb-call's error message points back at `/growthbook:setup`.
+All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It needs `GB_API_KEY` — set in your shell, or written to `~/.config/growthbook/.env` by `/growthbook:gb-setup`. If it's missing or invalid, gb-call's error message points back at `/growthbook:gb-setup`.
 
 ## Required inputs
 

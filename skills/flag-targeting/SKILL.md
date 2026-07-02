@@ -10,7 +10,7 @@ Add, edit, or remove targeting rules on an existing GrowthBook feature flag. Han
 
 Every change goes through a draft revision and requires publishing. For publishing, use flag-publish — it handles approval-required and merge-conflict failure modes.
 
-All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It needs `GB_API_KEY` set in env or written to `~/.config/growthbook/.env` by `/growthbook:setup`.
+All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It needs `GB_API_KEY` set in env or written to `~/.config/growthbook/.env` by `/growthbook:gb-setup`.
 
 ## Required inputs
 

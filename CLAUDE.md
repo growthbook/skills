@@ -153,7 +153,7 @@ When in doubt, check the existing skill that hits the closest endpoint. Don't mi
 
 ## Secret handling
 
-Two surfaces hold credentials: the env var or `~/.config/growthbook/.env` (PATs go in), and the conversation transcript (the user pastes a PAT into chat when running `/growthbook:setup`). Neither can be retroactively redacted.
+Two surfaces hold credentials: the env var or `~/.config/growthbook/.env` (PATs go in), and the conversation transcript (the user pastes a PAT into chat when running `/growthbook:gb-setup`). Neither can be retroactively redacted.
 
 Conventions every skill must follow:
 
@@ -166,7 +166,7 @@ Conventions every skill must follow:
 
 Two vars drive every skill: `GB_API_KEY` (required), `GB_API_URL` (self-hosted only). The PAT is tied to a GrowthBook user, so write skills let the API attribute new flags/experiments to the token's user — there is no separate owner var to set. `gb-call` reads them from `process.env` first, then falls back to `~/.config/growthbook/.env` if a var is unset. **Env always wins over the file** — useful for CI and one-off overrides.
 
-- Users get the file via `/growthbook:setup`, which validates against `GET /api/v1/projects` and writes with `chmod 600`.
+- Users get the file via `/growthbook:gb-setup`, which validates against `GET /api/v1/projects` and writes with `chmod 600`.
 - Skills never read or write the file themselves — only `gb-call` and `gb-setup` touch it. If you find yourself adding env-var-reading logic to another skill, stop: the helper handles it.
 - New env vars should be rare. Adding one means updating `gb-setup`, `gb-call`, the README, and every skill preamble. Prefer richer existing-var semantics (e.g. `GB_API_KEY` accepting both PATs and Secret Keys) over a new variable.
 
@@ -174,7 +174,7 @@ Two vars drive every skill: `GB_API_KEY` (required), `GB_API_URL` (self-hosted o
 
 Stays minimal on purpose. It is *one* Node file, *no* dependencies, uses built-in `fetch`. Reads env vars (with `.env` fallback), prints body to stdout on 2xx, prints a routing-aware error to stderr on non-2xx with exit 1.
 
-The error catalog is small but load-bearing — each branch in `explainHttpError` translates an HTTP failure into a one-line "here's what to do" hint (usually pointing at `/growthbook:setup`). When adding a new branch, keep two properties: (a) the synthesized message names a fix, not just a failure; (b) the raw response body is still printed underneath so power users can debug.
+The error catalog is small but load-bearing — each branch in `explainHttpError` translates an HTTP failure into a one-line "here's what to do" hint (usually pointing at `/growthbook:gb-setup`). When adding a new branch, keep two properties: (a) the synthesized message names a fix, not just a failure; (b) the raw response body is still printed underneath so power users can debug.
 
 Resist the urge to add features. `scripts/README.md` lists what is **not in scope**:
 
