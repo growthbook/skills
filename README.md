@@ -62,6 +62,15 @@ Every flag change goes through a draft revision before going live. These three s
 | `experiment-analyze` | Trigger a fresh snapshot, poll until ready, then interpret results (SRM check, lifts, CIs, guardrails). |
 | `experiment-stop` | Stop a running experiment, optionally declaring a winner and enabling a temporary rollout. Full post-stop flag disposition guidance. |
 
+### Product analytics
+
+Turn the metrics and fact tables you already use for experimentation into ad-hoc charts with GrowthBook's [Product Analytics](https://docs.growthbook.io/app/product-analytics) Explorer.
+
+| Skill | What it does |
+| --- | --- |
+| `metric-search` | Search, list, and audit fact metrics and fact tables — definitions, columns, and what's chartable. Read-only. |
+| `analytics-explore` | Build and run a chart: a metric over time, a fact-table aggregation, or a raw warehouse table. Returns the numbers plus a deep link to the rendered chart. |
+
 ## Install
 
 ### 1. Install the plugin
@@ -120,10 +129,11 @@ Each skill's description names its trigger phrases and routes to sibling skills 
 - **Experiment-first:** `experiment-design` → `experiment-launch` → `experiment-analyze` → `experiment-stop` → `flag-cleanup`
 - **Flag-first:** `flag-create` → `flag-toggle` → `flag-targeting` → `flag-ramp` / `flag-monitoring` → `flag-cleanup`
 - **Experiment on an existing flag:** `flag-experiment` → `experiment-launch` (reuses the existing flag) → `experiment-stop` → `flag-cleanup`
+- **Analytics:** `metric-search` → `analytics-explore` → `experiment-design` (when a chart surfaces something worth testing)
 
 ## What these skills do not do
 
-- **No metric or datasource creation.** Create metrics and datasources in the GrowthBook UI and reference them by ID in the experiment skills.
+- **No metric or datasource creation.** Create metrics and datasources in the GrowthBook UI and reference them by ID in the experiment and analytics skills.
 - **No SDK code generation.** Follow GrowthBook's SDK docs; these skills manage flags and experiments via the REST API, not the SDK.
 - **No multi-armed bandit support.** The experiment skills target standard A/B tests; the skills halt rather than mis-interpret bandit experiments.
 - **No silent retries or rate-limit backoff in the helper.** GrowthBook is rate-limited at 60 rpm. The skills that fan out cap their call counts; multi-tenant orgs hitting concurrent requests may still see `429`s, which `gb-call` surfaces explicitly rather than retrying.
@@ -185,6 +195,10 @@ skills/
   experiment-launch/SKILL.md
   experiment-analyze/SKILL.md
   experiment-stop/SKILL.md
+
+  # Product analytics
+  metric-search/SKILL.md
+  analytics-explore/SKILL.md
 
 CLAUDE.md                              # authoring conventions for contributors
 .gitignore
