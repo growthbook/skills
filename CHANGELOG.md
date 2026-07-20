@@ -2,6 +2,13 @@
 
 All notable changes to the `growthbook` plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- Experiment skills now use the new filtering/sorting params on `GET /api/v1/experiments` (requires a GrowthBook release that includes them):
+  - `experiment-brainstorm` pulls history newest-first via `sortBy=dateCreated&sortOrder=desc` (previously the API's fixed oldest-first order silently grounded proposals in the oldest experiments on multi-page orgs), and scopes pulls with `tag` / `projectId` / `owner` when the user narrows the ask. Corrected the page-size claim: `limit` caps at 100, not 50.
+  - `experiment-analyze` and `experiment-stop` gain a resolve-by-name entry point (`?q=<text>`, matching name / tracking key / description / hypothesis) for when the user doesn't have the experiment ID, plus a guardrail documenting that `q` rejects negation and comparison operators with a 400.
+
 ## [1.1.0] — 2026-06-01
 
 ### Removed
