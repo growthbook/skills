@@ -2,6 +2,11 @@
 
 All notable changes to the `growthbook` plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- `flag-search` now uses the new filtering/sorting params on `GET /api/v2/features` (requires a GrowthBook release that includes them): `owner` (userId or email), `valueType`, `baseConfig` (find Config-mode flags backed by a config key), `archived`, comma-separated `tag` values, and `sortBy`/`sortOrder`. Searches that previously fetched every page and filtered client-side ("flags owned by X", "boolean flags") are now single filtered calls; only environment state and rule shape still need client-side filtering. Also fixes drift: the skill documented a `?tag=` filter that the strict v2 query schema rejected with a 400 before these params existed.
+
 ## [1.1.0] — 2026-06-01
 
 ### Removed
