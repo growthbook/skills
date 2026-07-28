@@ -135,6 +135,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 - **`analysis` should explain the decision in plain English (markdown).** Future readers (including future-self) will want context. Don't leave it blank when declaring a winner.
 - **Run `experiment-analyze` first if the user hasn't.** Stopping based on a glance at the dashboard is a common mistake — interim numbers can flip, and the data-quality checks in `experiment-analyze` can flag results that look conclusive but aren't.
 - **`q` rejects negation and operators with a 400.** The list endpoint's `q` param takes the app's search syntax (`status:running tag:checkout` plus free text) but hard-rejects `!`, `~`, `^`, `>`, `<`, `=`. Send plain `field:value` tokens and free text only.
+- **When resolving by name, filter bandits with `bandits`, not `type`.** The response's `type` field (`standard` / `multi-armed-bandit`) is not a list query param; sending `type=` returns a 400. Add `bandits=false` to keep bandits out of the candidate list, since this skill halts on them anyway. (`implementationType` is a different axis — the linked-change kind.)
 
 ## Endpoints used
 

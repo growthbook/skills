@@ -177,6 +177,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 - **Rate limit awareness.** Happy path is a single `/results` call. Worst case (no snapshot or stale + 60-iteration poll + re-fetch) is ~63 calls spread over 5 minutes (~13/min), well under 60 rpm. If multiple users invoke this concurrently in the same org the limit can still bite — surface clearly if `gb-call` returns a 429.
 - **Read-only.** This skill never stops or modifies the experiment. Hand off to `experiment-stop` when the user wants to act.
 - **`q` rejects negation and operators with a 400.** The list endpoint's `q` param takes the app's search syntax (`status:running tag:checkout` plus free text) but hard-rejects `!`, `~`, `^`, `>`, `<`, `=`. Send plain `field:value` tokens and free text only.
+- **When resolving by name, filter bandits with `bandits`, not `type`.** The response's `type` field (`standard` / `multi-armed-bandit`) is not a list query param; sending `type=` returns a 400. Use `bandits=false` to exclude bandits from the candidates, since this skill halts on them anyway. (`implementationType` is a different axis — the linked-change kind.)
 
 ## Endpoints used
 
