@@ -56,7 +56,7 @@ scripts/gb-call                          ← canonical helper; Claude plugin inv
 .cursor-plugin/                          ← plugin.json (Cursor manifest)
 ```
 
-Four domains: `feature-flags` (17 workflows), `experiments` (5), `analytics` (2), and `gb-setup` (no `references/` — it's a single workflow).
+Four domains: `feature-flags` (17 workflows), `experiments` (5), `analytics` (3), and `gb-setup` (no `references/` — it's a single workflow).
 
 Skills are pure markdown. The helper is the only executable code in the plugin. This is intentional — the v0.2.0 commit (`daac766`) pivoted away from MCP to keep the surface that small.
 
@@ -269,7 +269,7 @@ Workflow names map to **what the user is doing**, not to API endpoints:
 
 - Experiments: `brainstorm → design → launch → analyze → stop`
 - Flags: `create → toggle → targeting → ramp`/`monitoring → cleanup`, with `revisions → review → publish` running underneath all of them
-- Analytics: `metric-search → analytics-explore`
+- Analytics: `metric-search → metric-create → analytics-explore`
 
 When proposing a new workflow, name it after the user's intent. If you find yourself naming one after an endpoint (`flag-revisions-publish`), the scope is probably wrong — fold it into the lifecycle workflow that uses it.
 
