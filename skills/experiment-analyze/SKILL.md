@@ -14,6 +14,14 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
 1. **Fetch results + experiment metadata in one call.** `/results` returns `{ experiment, result }` — the same payload that powers the GrowthBook UI's results view, so there's no need for a separate metadata call.
 
+   If the user gave a name instead of an ID ("the checkout test"), resolve it first — `q` matches against name, tracking key, description, and hypothesis:
+
+   ```bash
+   gb-call GET '/api/v1/experiments?q=checkout&sortBy=dateUpdated&sortOrder=desc&limit=10'
+   ```
+
+   If more than one experiment plausibly matches, list the candidates and let the user pick — don't guess.
+
    ```bash
    gb-call GET /api/v1/experiments/<experiment-id>/results
    # or, when the user asks for a specific phase / dimension cut:
@@ -168,9 +176,12 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 - **24h is a deliberate ceiling, not the auto-refresh cadence.** The server auto-refreshes every 6h by default, so a snapshot under 24h has almost always been refreshed at least once. The skill's 24h bar gives the user a useful conservative window without paying snapshot compute on data that hasn't moved. Don't drop it to "any data older than a minute" — that's how you pin a busy org against the 60 rpm limit.
 - **Rate limit awareness.** Happy path is a single `/results` call. Worst case (no snapshot or stale + 60-iteration poll + re-fetch) is ~63 calls spread over 5 minutes (~13/min), well under 60 rpm. If multiple users invoke this concurrently in the same org the limit can still bite — surface clearly if `gb-call` returns a 429.
 - **Read-only.** This skill never stops or modifies the experiment. Hand off to `experiment-stop` when the user wants to act.
+- **`q` rejects negation and operators with a 400.** The list endpoint's `q` param takes the app's search syntax (`status:running tag:checkout` plus free text) but hard-rejects `!`, `~`, `^`, `>`, `<`, `=`. Send plain `field:value` tokens and free text only.
+- **When resolving by name, filter bandits with `bandits`, not `type`.** The response's `type` field (`standard` / `multi-armed-bandit`) is not a list query param; sending `type=` returns a 400. Use `bandits=false` to exclude bandits from the candidates, since this skill halts on them anyway. (`implementationType` is a different axis — the linked-change kind.)
 
 ## Endpoints used
 
+- `GET /api/v1/experiments?q=<text>` — resolve an experiment ID when the user only gave a name or keyword. `q` matches name, tracking key, description, and hypothesis; pair with `sortBy=dateUpdated&sortOrder=desc` so active experiments surface first.
 - `GET /api/v1/experiments/<id>/results` — primary entry point; returns `{ experiment, result }` so step 1 grabs metadata, status, and the snapshot timestamp (`result.dateUpdated`) in a single call. Accepts `phase` / `dimension` query params.
 - `POST /api/v1/experiments/<id>/snapshot` — trigger a fresh snapshot when results are over 24h old or the user wants a phase/dimension cut the cached snapshot doesn't cover. Body accepts `phase` (integer) and `dimension` (string).
 - `GET /api/v1/snapshots/<snapshot-id>` — poll for snapshot completion (5s interval, 60 iteration cap). Returns `{ snapshot: { id, experiment, status } }`.

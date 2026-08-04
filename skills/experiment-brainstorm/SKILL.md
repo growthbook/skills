@@ -15,10 +15,14 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 1. **Pull the experiment list, most recent first.**
 
    ```bash
-   gb-call GET '/api/v1/experiments?limit=50&status=stopped'
+   gb-call GET '/api/v1/experiments?limit=50&status=stopped&sortBy=dateCreated&sortOrder=desc'
    ```
 
-   Returns up to 50 experiments per page (the API cap).
+   Returns up to 50 experiments per page (`limit` caps at 100). Keep `sortBy=dateCreated&sortOrder=desc` — the API's default order is oldest-first, and on an org with more than one page of history an unsorted pull grounds every proposal in ancient experiments.
+
+   If the user scoped the brainstorm ("ideas for checkout", "what should the growth team test next"), narrow the pull with filters instead of discarding results after the fact: `&tag=checkout`, `&projectId=prj_abc123`, `&owner=<email>`, `&result=won,lost`, `&metricId=met_abc123`, or `&implementationType=feature`. `tag`, `owner`, `result`, `metricId`, and `implementationType` take comma-separated values (ORed within a param); `projectId` takes a single project id. Separate params AND together.
+
+   Consider adding `&bandits=false` when the user wants product-test patterns: bandit results carry per-arm probabilities rather than a winner/loser verdict, so they distort the win-rate tally in step 4.
 
 2. **Fetch results for each stopped experiment.** Loop over the stopped IDs:
 
@@ -55,6 +59,8 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 ## Guardrails
 
 - **Stopped experiments only.** Filter drafts and running experiments out of your synthesis. If the user asks about the live pipeline, that's a different question — point them at `flag-discovery` or `experiment-design` instead.
+- **`result` alone does not imply stopped.** A result is recorded when an experiment is stopped but is retained if it's later restarted, so `result=won` can return running experiments. Always keep `status=stopped` in the query rather than relying on `result` to scope the history.
+- **Filtering bandits uses `bandits`, not `type`.** The list endpoint has no `type` param — `implementationType` filters the linked-change kind (`feature` / `visualChange` / `redirect`), which is a different axis from the response's `type` field (`standard` / `multi-armed-bandit`). Sending `type=` returns a 400.
 - **Ground every proposal.** Cite the specific past experiment(s) you're building on. No proposals based on generic best practices.
 - **Don't repeat losers without saying why.** If a proposal mirrors a recent loser, say so explicitly and explain what's different this time.
 - **Win rate definition:** `won / (won + lost + inconclusive)`. Don't invent another formula.
@@ -65,7 +71,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
 ## Endpoints used
 
-- `GET /api/v1/experiments?limit=50&status=stopped` — list experiments (returns metadata including status). Cap is 50 per page.
+- `GET /api/v1/experiments?limit=50&status=stopped&sortBy=dateCreated&sortOrder=desc` — list stopped experiments, newest first (`limit` caps at 100). Optional scoping filters: `tag`, `owner`, `result`, `metricId`, `implementationType` (comma-separated values ORed within a param), `projectId` (single project id), `bandits` (`true`/`false`), `archived`. Sortable fields: `dateCreated`, `dateUpdated`, `name`.
 - `GET /api/v1/experiments/{id}/results` — full results for one experiment. One call per stopped experiment in scope.
 
 ## Output template

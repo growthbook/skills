@@ -2,6 +2,14 @@
 
 All notable changes to the `growthbook` plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- Experiment skills now use the filtering/sorting params added to `GET /api/v1/experiments` in [growthbook#6418](https://github.com/growthbook/growthbook/pull/6418) — `q`, `owner`, `result`, `tag`, `implementationType`, `metricId`, `bandits`, `archived`, `sortBy`, `sortOrder` (on Cloud now; self-hosted needs a release later than v5.0.0):
+  - `experiment-brainstorm` pulls history newest-first via `sortBy=dateCreated&sortOrder=desc` (previously the API's fixed oldest-first order silently grounded proposals in the oldest experiments on multi-page orgs), and scopes pulls with `tag` / `projectId` / `owner` / `result` / `metricId` / `implementationType` when the user narrows the ask, plus optional `bandits=false` so per-arm bandit results don't distort the win-rate tally. Corrected the page-size claim: `limit` caps at 100, not 50.
+  - `experiment-analyze` and `experiment-stop` gain a resolve-by-name entry point (`?q=<text>`, matching name / tracking key / description / hypothesis) for when the user doesn't have the experiment ID, plus a guardrail documenting that `q` rejects negation and comparison operators with a 400.
+  - Guardrails for two naming traps the endpoint's shape invites: `result` is the *recorded* result and is retained if a stopped experiment is restarted (so `result=won` can return running experiments — keep `status=stopped`), and bandits are filtered with `bandits`, not `type` (there is no `type` list param; `implementationType` filters the linked-change kind instead, a different axis from the response's `type` field).
+
 ## [1.1.0] — 2026-06-01
 
 ### Removed
