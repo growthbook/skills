@@ -4,6 +4,12 @@ All notable changes to the `growthbook` plugin are documented here. Format follo
 
 ## [Unreleased]
 
+### Added
+- `learnings` — search, read, and record Learnings, the durable conclusions a team has drawn across multiple experiments. Backed by the Learnings REST API added in [growthbook#5986](https://github.com/growthbook/growthbook/pull/5986): semantic search (`POST /api/v1/learnings/search`, ranked by meaning rather than keyword), list with `projectId` / `experimentId` / `tag` / `status` filters, and full CRUD. `experimentId` matches Learnings citing that experiment in either direction, supporting or contradicting.
+  - `experiment-design` now hands off to it before designing, so a settled question isn't re-tested; `experiment-analyze` hands off after a result that generalizes, so the conclusion outlives the experiment.
+  - Documents only what the REST API exposes. The in-app AI flows that *discover* Learnings across experiments and *refresh* one against newer experiments are app-only routes, so the skill points users at the Learnings page rather than attempting a call that would 404.
+  - Enterprise-gated: create, update, and search need a plan including Learnings, and search additionally needs AI enabled.
+
 ### Changed
 - Experiment skills now use the filtering/sorting params added to `GET /api/v1/experiments` in [growthbook#6418](https://github.com/growthbook/growthbook/pull/6418) — `q`, `owner`, `result`, `tag`, `implementationType`, `metricId`, `bandits`, `archived`, `sortBy`, `sortOrder` (on Cloud now; self-hosted needs a release later than v5.0.0):
   - `experiment-brainstorm` pulls history newest-first via `sortBy=dateCreated&sortOrder=desc` (previously the API's fixed oldest-first order silently grounded proposals in the oldest experiments on multi-page orgs), and scopes pulls with `tag` / `projectId` / `owner` / `result` / `metricId` / `implementationType` when the user narrows the ask, plus optional `bandits=false` so per-arm bandit results don't distort the win-rate tally. Corrected the page-size claim: `limit` caps at 100, not 50.

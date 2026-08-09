@@ -100,6 +100,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
 ## Handoffs
 
+- `learnings` — search what the team has already concluded before designing. If a Learning already settles the question, or contradicts the hypothesis, surface it rather than designing a test that re-litigates it.
 - `experiment-launch` — consumes the spec and creates the draft experiment in GrowthBook.
 - Manual metric creation — if the primary metric doesn't exist yet, the user needs to create it in the GrowthBook UI at `<host>/metrics` (or `<host>/fact-tables` for fact metrics) before launching. No skill for that yet; derive `<host>` from `GB_API_URL` by swapping `api.` → `app.`.
 - `experiment-brainstorm` — if the user came in without a specific hypothesis, route back here to ground a new idea in past results.

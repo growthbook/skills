@@ -188,6 +188,7 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 
 ## Handoffs
 
+- `learnings` — when the result generalizes beyond this one test (a tactic, audience, or product behaviour that has now shown up more than once), offer to record it as a Learning so it outlives the experiment.
 - `experiment-stop` — when the user is ready to act on a conclusive result.
 - `flag-targeting` — after stopping with a winner, the linked flag (if any) needs its `experiment-ref` rule updated or removed.
 - `experiment-brainstorm` — to ground ideas for the next test in results from past experiments.

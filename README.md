@@ -61,6 +61,7 @@ Every flag change goes through a draft revision before going live. These three s
 | `experiment-launch` | End-to-end launch: create the experiment, prep or reuse the feature flag, wire the experiment-ref rule, and call `/start`. Works for both experiment-first and flag-first workflows. Handles approval and pre-launch checklist failure paths. |
 | `experiment-analyze` | Trigger a fresh snapshot, poll until ready, then interpret results (SRM check, lifts, CIs, guardrails). |
 | `experiment-stop` | Stop a running experiment, optionally declaring a winner and enabling a temporary rollout. Full post-stop flag disposition guidance. |
+| `learnings` | Search, read, and record Learnings — durable conclusions drawn across multiple experiments. Check before designing a test; record after one generalizes. |
 
 ### Product analytics
 
@@ -126,7 +127,7 @@ Skills can fire two ways:
 
 Each skill's description names its trigger phrases and routes to sibling skills when the request is a better fit elsewhere — so they compose cleanly when chained:
 
-- **Experiment-first:** `experiment-design` → `experiment-launch` → `experiment-analyze` → `experiment-stop` → `flag-cleanup`
+- **Experiment-first:** `learnings` (what do we already know?) → `experiment-design` → `experiment-launch` → `experiment-analyze` → `experiment-stop` → `flag-cleanup`, recording back to `learnings` when a result generalizes
 - **Flag-first:** `flag-create` → `flag-toggle` → `flag-targeting` → `flag-ramp` / `flag-monitoring` → `flag-cleanup`
 - **Experiment on an existing flag:** `flag-experiment` → `experiment-launch` (reuses the existing flag) → `experiment-stop` → `flag-cleanup`
 - **Analytics:** `metric-search` → `analytics-explore` → `experiment-design` (when a chart surfaces something worth testing)
@@ -195,6 +196,7 @@ skills/
   experiment-launch/SKILL.md
   experiment-analyze/SKILL.md
   experiment-stop/SKILL.md
+  learnings/SKILL.md
 
   # Product analytics
   metric-search/SKILL.md
