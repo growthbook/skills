@@ -38,7 +38,7 @@ Prefer search over list when the question is conceptual — it ranks by meaning,
 echo '{"query":"checkout friction"}' | gb-call POST /api/v1/learnings/search -
 ```
 
-Optional `limit` (integer, max 50) and `projectId`. Each result carries a `similarity` score (0–1) alongside the Learning.
+Optional `limit` (integer, max 50) and `projectId`. Each result carries a `similarity` score (0–1) alongside the Learning. This is a POST only because the query goes in the body — it reads and changes nothing.
 
 Use the list endpoint when you want a filtered slice rather than a ranked one:
 
