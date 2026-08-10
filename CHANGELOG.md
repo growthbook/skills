@@ -9,6 +9,7 @@ All notable changes to the `growthbook` plugin are documented here. Format follo
   - `experiment-design` now hands off to it before designing, so a settled question isn't re-tested; `experiment-analyze` hands off after a result that generalizes, so the conclusion outlives the experiment.
   - Documents only what the REST API exposes. The in-app AI flows that *discover* Learnings across experiments and *refresh* one against newer experiments are app-only routes, so the skill points users at the Learnings page rather than attempting a call that would 404.
   - Enterprise-gated: create, update, and search need a plan including Learnings, and search additionally needs AI enabled.
+  - Treats an empty corpus as the normal starting state rather than a finding: most orgs have no Learnings yet, so an empty search routes to `experiment-brainstorm` / `experiment-analyze` for the experiment record instead of reporting that nothing is known.
 
 ### Changed
 - Experiment skills now use the filtering/sorting params added to `GET /api/v1/experiments` in [growthbook#6418](https://github.com/growthbook/growthbook/pull/6418) — `q`, `owner`, `result`, `tag`, `implementationType`, `metricId`, `bandits`, `archived`, `sortBy`, `sortOrder` (on Cloud now; self-hosted needs a release later than v5.0.0):

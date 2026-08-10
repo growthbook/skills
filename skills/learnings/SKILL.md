@@ -1,12 +1,14 @@
 ---
 name: learnings
-description: Search, read, and record Learnings — the durable conclusions a team has drawn across multiple experiments. Use when the user asks "what have we learned about X", "do we already know whether Y works", "have we tested this before", "record this as a learning", or when a finished experiment produces a conclusion worth keeping. Check before designing a new experiment so you don't re-test something already settled. For a single experiment's results, use experiment-analyze.
+description: Search, read, and record Learnings — the durable conclusions a team has drawn across multiple experiments. Use when the user asks "what have we learned about X", "do we already know whether Y works", "have we tested this before", "record this as a learning", or when a finished experiment produces a conclusion worth keeping. Check before designing a new experiment so you don't re-test something already settled. Most orgs have no Learnings yet — an empty result means none are recorded, not that there's no history, so fall through to experiment-brainstorm. For a single experiment's results, use experiment-analyze.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
 ---
 
 # learnings
 
 A Learning is a durable conclusion that spans **multiple** experiments — "urgency messaging lifts checkout on mobile" — not a summary of one test. Each cites the experiments supporting it and the ones contradicting it, so it carries its own evidence.
+
+Learnings are a **curated layer on top of** the experiment record, never a replacement for it. A Learning is what someone concluded; the experiments are the evidence. Most teams have far more experiment history than Learnings, so reading Learnings is a shortcut when one exists — not a substitute for looking at past experiments.
 
 All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`. It needs `GB_API_KEY` — set in your shell, or written to `~/.config/growthbook/.env` by `/growthbook:gb-setup`. If unset or invalid, gb-call's error message points back at `/growthbook:gb-setup`.
 
@@ -15,6 +17,16 @@ All API calls go through the bundled helper: `${CLAUDE_PLUGIN_ROOT}/scripts/gb-c
 1. **Before designing an experiment** — search first. The team may have already settled the question, or hold contrary evidence worth knowing. This is the highest-value use.
 2. **When the user asks what's known** about an area, tactic, or audience.
 3. **After analyzing a finished experiment**, when the result generalizes beyond that one test.
+
+## An empty corpus is the normal starting state
+
+Learnings only exist once someone has saved one, so **most orgs have none** — including orgs with years of experiment history. An empty search result is not a finding.
+
+When a search returns nothing:
+
+- Say plainly that no Learnings have been recorded yet. Do **not** report it as "the team has no prior knowledge about this" — that conflates an empty curated layer with an empty experiment history.
+- Fall back to the experiment record: `experiment-brainstorm` grounds ideas in past stopped experiments, and `experiment-analyze` reads a specific experiment's results. An empty Learnings search must never stop you from checking those.
+- If past experiments did answer the question, that's a good moment to offer to record the conclusion as the team's first Learning.
 
 ## Workflow
 
