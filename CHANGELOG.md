@@ -2,7 +2,30 @@
 
 All notable changes to the `growthbook` plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [2.0.0] — Unreleased
+
+### Changed — BREAKING: 25 skills reorganized into 4 domain skills
+
+The plugin now ships **four** skills — `feature-flags`, `experiments`, `analytics`, and `gb-setup` — instead of 25 flat ones. Each domain skill is a router: its `SKILL.md` carries the description, a workflow index, and the conventions shared across that domain, and the individual workflows moved into `references/<workflow>.md` inside it. Nothing was dropped; all 24 non-setup workflows survive with their steps, guardrails, and endpoint lists intact.
+
+**Why.** Skill frontmatter is always loaded into the agent's system prompt, whether or not you mention GrowthBook. Twenty-five descriptions cost 14.3 KB of context up front, and because the namespace was flat, each description also had to explain when to use its siblings instead. The four routers cost 2.9 KB, an 80% cut, and the sibling routing moved into the router body where it loads only on demand. This is the [three-level progressive disclosure model](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices) the Agent Skills guidance describes: frontmatter, then `SKILL.md` body, then bundled files. The previous layout used the first two levels and none of the third.
+
+**What changes.** Domain slash commands still work, but the 24 workflow-level slash commands are no longer registered or autocompleted. Invoke the domain skill, then state the workflow intent:
+
+| Was | Now |
+| --- | --- |
+| `/growthbook:flag-*` (17 commands) | `/growthbook:feature-flags`, then say what you want |
+| `/growthbook:experiment-*` (5 commands) | `/growthbook:experiments`, then say what you want |
+| `/growthbook:metric-search`, `/growthbook:analytics-explore` | `/growthbook:analytics`, then say what you want |
+| `/growthbook:gb-setup` | unchanged |
+
+Automatic invocation is unaffected — describe the task and the right domain skill still fires, then reads the matching workflow. Scripted or aliased invocations of a workflow name need updating.
+
+**Also changed:**
+- Reference files longer than 100 lines gained a `## Contents` index, so a partial read still shows the file's full scope.
+- The `open`/`xdg-open` deep-link blocks in `flag-publish`, `flag-review`, `flag-ramp`, and `flag-monitoring` now print the URL instead of opening a browser. This removes the `Bash(open https://*)` grant, which under a router would otherwise have applied to all 17 flag workflows rather than the 4 that used it. `experiments` and `analytics` keep `Bash(sleep *)` for their poll loops.
+- Documented the approval-failure split that the workflows had right but never explained: the **explicit** publish endpoint returns **400** (`BadRequestError` in `postFeatureRevisionPublish.ts`), while paths that publish as a *side effect* return **403** (`PermissionError` from `createAndPublishRevision`) — the environment toggle and `POST /v2/features/<id>` with `{archived}`. The `feature-flags` router now states both, plus 409 (stale base) and 422 (`PublishBlockedError`, whose body distinguishes gates an `ignoreWarnings` retry clears from gates needing a permission).
+- Clarified bandit scope: the GrowthBook REST API supports multi-armed bandit experiments and separate Enterprise beta Contextual Bandits, but the current experiment workflows operate standard A/B tests only and halt on either bandit type.
 
 ### Changed
 - Experiment skills now use the filtering/sorting params added to `GET /api/v1/experiments` in [growthbook#6418](https://github.com/growthbook/growthbook/pull/6418) — `q`, `owner`, `result`, `tag`, `implementationType`, `metricId`, `bandits`, `archived`, `sortBy`, `sortOrder` (on Cloud now; self-hosted needs a release later than v5.0.0):

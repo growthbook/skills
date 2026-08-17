@@ -39,41 +39,96 @@ These live in a local checkout of the GrowthBook monorepo, referred to below as 
 - **For "what's a footgun" or "what do we tell users":** check `docs/kb/` and `docs/faq.mdx`. These are where the team writes down lessons.
 - **When docs and code disagree:** trust the code, flag the doc drift for the GrowthBook team in a separate note (not in the skill).
 
-The Guardrails section of each SKILL.md is an API-quirk catalog disguised as policy. Every new entry should cite — in your reasoning, not necessarily in the file — which source confirmed it.
+The Guardrails section of each workflow file is an API-quirk catalog disguised as policy. Every new entry should cite — in your reasoning, not necessarily in the file — which source confirmed it.
 
 ## What this repo is
 
-A Claude Code plugin (`growthbook`) that also ships as standalone agent skills for GrowthBook feature flags and experimentation. Skills shell out to a small Node helper (`scripts/gb-call`) that calls the GrowthBook REST API directly. No MCP server, no build step, no runtime deps beyond Node 18+.
+A Claude Code plugin (`growthbook`) that also ships as standalone agent skills for GrowthBook feature flags, experimentation, and product analytics. Skills shell out to a small Node helper (`scripts/gb-call`) that calls the GrowthBook REST API directly. No MCP server, no build step, no runtime deps beyond Node 18+.
 
 ## Architecture in one breath
 
 ```
-skills/<name>/SKILL.md             ← workflow + guardrails (the entire skill)
-skills/<name>/scripts/gb-call      ← symlink → ../../scripts/gb-call (for npx-installed agents)
-scripts/gb-call                    ← canonical helper; Claude plugin invokes this
-.claude-plugin/                    ← plugin.json (manifest) + marketplace.json (listing)
+skills/<domain>/SKILL.md                 ← router: description, workflow index, shared conventions
+skills/<domain>/references/<workflow>.md ← one workflow: steps, guardrails, endpoints, handoffs
+skills/<domain>/scripts/gb-call          ← symlink → ../../../scripts/gb-call (for npx-installed agents)
+scripts/gb-call                          ← canonical helper; Claude plugin invokes this
+.claude-plugin/                          ← plugin.json (manifest) + marketplace.json (listing)
+.cursor-plugin/                          ← plugin.json (Cursor manifest)
 ```
+
+Four domains: `feature-flags` (17 workflows), `experiments` (5), `analytics` (2), and `gb-setup` (no `references/` — it's a single workflow).
 
 Skills are pure markdown. The helper is the only executable code in the plugin. This is intentional — the v0.2.0 commit (`daac766`) pivoted away from MCP to keep the surface that small.
 
-The per-skill `scripts/gb-call` entries are git symlinks — edit only the canonical `scripts/gb-call`. Never create copies in skill directories.
+The per-domain `scripts/gb-call` entries are git symlinks — edit only the canonical `scripts/gb-call`. Never create copies in skill directories.
+
+### Client-neutral core, client-specific adapters
+
+The workflow content is canonical and must stay client-agnostic. It describes GrowthBook tasks in terms of REST methods, paths, payloads, sequencing, and guardrails. `gb-call` is the shell adapter used by Agent Skills clients; MCP and the in-app assistant may execute the same contract through different adapters.
+
+- Keep client packaging in client-owned surfaces such as `.claude-plugin/` and `.cursor-plugin/`. It is fine for those manifests, invocation examples, and permission declarations to differ.
+- Do not put Claude-, Cursor-, MCP-, or model-provider-specific behavior into `references/` workflow semantics. A client adapter may change how a request is executed, but not what request is made or which safety gate applies.
+- Treat `${CLAUDE_PLUGIN_ROOT}` and Claude Code's `Bash(...)` permission patterns as packaging details, not part of the workflow contract. Other Agent Skills clients may ignore the experimental `allowed-tools` field and resolve `scripts/gb-call` relative to the skill directory.
+- Keep user-facing security language provider-neutral. Name a provider only in that provider's installation or adapter documentation.
+- If a runtime has no shell, port the REST method, path, query, and body mechanically. Do not maintain a second copy of the workflow logic for that runtime.
+
+### Why two levels and not 25 skills
+
+Frontmatter is loaded into the agent's system prompt at startup for **every** installed skill, whether or not GrowthBook comes up. The flat layout paid 14.3 KB of context for 25 descriptions before the user typed anything, and a flat namespace forced each description to also explain when to use its 24 siblings. The four routers cost 2.9 KB and move sibling routing into the router body, which loads only when the domain is relevant.
+
+This is the third level of [progressive disclosure](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices): frontmatter, then `SKILL.md` body, then bundled files read on demand. Two constraints make `references/` the right mechanism rather than nested skill directories:
+
+- **Claude Code does not scan a plugin's `skills/` recursively** — only its immediate children. `skills/feature-flags/flag-create/SKILL.md` would be invisible there while working fine in Cursor, which does walk the tree. See [anthropics/claude-code#18192](https://github.com/anthropics/claude-code/issues/18192).
+- **Keep references one level deep.** Reference files are reached directly from the router, never through another reference file. Agent clients may only partially read files found through a chain, so a reference-to-reference hop risks a preview instead of a complete read.
+
+**Adding a workflow** means adding `references/<name>.md` and one row to the router's index table — not a new top-level skill. Only add a top-level skill for a genuinely new domain, and expect to justify the frontmatter cost.
 
 ## The skill contract
 
-Every `SKILL.md` follows this structure. Don't invent new sections — extend the existing ones.
+There are now two file shapes. Don't invent new sections in either — extend the existing ones.
+
+### The router (`skills/<domain>/SKILL.md`)
 
 ```markdown
 ---
 name: <kebab-case, matches directory>
-description: <triggers + routing — see below>
+description: <triggers + cross-domain routing — see below>
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
 ---
 
-# <skill-name>
+# <domain>
 
-<one-paragraph intent: what this skill does and what it deliberately doesn't>
+<one paragraph: what the domain covers, which API version it uses>
 
-All API calls go through the bundled helper. Under the Claude Code plugin install, it lives at `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call` (the plugin root). Under `npx skills install`, it lives at `scripts/gb-call` relative to this skill's directory. It expects `GB_API_KEY` in env.
+<the gb-call preamble — stated once here, not repeated in reference files>
+
+## Pick a workflow
+<table: `references/<name>.md` → when the user wants it, plus ambiguity tie-breakers>
+
+## Shared conventions
+<the rules every workflow in the domain assumes, including verified failure modes>
+
+## Read-only vs. write
+<which workflows must never mutate, and which product-safety gates are non-negotiable>
+
+## Handoffs
+<sibling domain skills, by skill name — never by a `references/` path>
+```
+
+### A workflow (`skills/<domain>/references/<name>.md`)
+
+```markdown
+---
+name: <kebab-case, matches filename>
+description: <kept for the in-app port; see below>
+---
+
+# <workflow-name>
+
+<one-paragraph intent: what this does and what it deliberately doesn't>
+
+## Contents
+<index of ## sections and the ### paths under Workflow — required over 100 lines>
 
 ## Workflow
 <numbered steps, with bash + JSON shown literally>
@@ -82,23 +137,25 @@ All API calls go through the bundled helper. Under the Claude Code plugin instal
 <bulleted footguns and policies the API does not enforce>
 
 ## Endpoints used
-<flat list of every endpoint the skill touches>
+<flat list of every endpoint this workflow touches>
 
 ## Handoffs
-<sibling skills the user might want next, with the trigger>
+<`references/<sibling>.md` in-domain; "the **<domain>** skill (`<workflow>` workflow)" across domains>
 ```
 
 ### Frontmatter rules
 
-- **`description` does routing, not labeling.** Include (a) concrete trigger phrases the user might say, and (b) explicit "For X, use Y skill" handoff hints. Look at any existing skill — the description is dense by design. It's what teaches Claude when *not* to fire.
-- **`allowed-tools` is the security model.** Pin to `Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)` and nothing else, unless the skill genuinely needs another binary. Two existing exceptions: `experiment-analyze` allows `Bash(sleep *)` for its poll loop; `gb-setup` allows four file-management commands to write `~/.config/growthbook/.env`. New tool grants need a defensible reason.
-- **When you do grant another binary, prefer literal full-command patterns over wildcards.** `Bash(chmod 600 ~/.config/growthbook/.env)` is a much narrower grant than `Bash(chmod *)` — the latter would allow `chmod 777 ~/.ssh/authorized_keys` if a prompt-injected response asked Claude to run it. Wildcards are only appropriate when the variable portion is genuinely unbounded (e.g. `Bash(sleep *)` where the arg is a duration). For everything else, write out each accepted invocation as its own allowlist entry.
+- **`allowed-tools` lives on the router only.** Reference files don't carry it; the tool boundary is the skill, and a reference file isn't one. A grant on the router applies to every workflow in the domain, so **the union is the wrong default** — ask whether the grant is worth giving to all of them. The deep-link `open`/`xdg-open` grant was dropped for exactly this reason: 4 of 17 flag workflows wanted it, so those workflows now print the URL instead. `experiments` and `analytics` keep `Bash(sleep *)` for poll loops; `gb-setup` keeps its four literal file-management commands.
+- **When you do grant another binary, prefer literal full-command patterns over wildcards.** `Bash(chmod 600 ~/.config/growthbook/.env)` is a much narrower grant than `Bash(chmod *)` — the latter would allow `chmod 777 ~/.ssh/authorized_keys` if a prompt-injected response asked the agent to run it. Wildcards are only appropriate when the variable portion is genuinely unbounded (e.g. `Bash(sleep *)` where the arg is a duration). For everything else, write out each accepted invocation as its own allowlist entry.
+- **A router `description` does all the routing that used to be spread across its workflows.** It needs (a) the trigger phrases for every workflow it owns, and (b) explicit "for X, use the Y skill" hints pointing at the other three domains. It is the only thing the agent sees when deciding whether to open the domain at all. Cap is 1,024 characters; the current routers sit at roughly 800.
+- **A workflow `description` is no longer read by any host** — the router does the routing. Keep it anyway, verbatim: the in-app GrowthBook assistant's loader reads leaf `name` and `description` when porting these files (see `PORTING_SKILLS.md` in the GrowthBook repo), so it stays the porting payload. Don't spend effort tuning it, and don't delete it.
+- **`name` must match its directory** (routers) **or filename** (workflows). The Agent Skills specification requires the directory match.
 - **Use `${CLAUDE_PLUGIN_ROOT}` for paths**, never relative paths. It resolves to the plugin's install directory at runtime.
 
 ### Workflow conventions
 
-- **Number every step.** Long skills (`experiment-launch`) lead with a `- [ ]` checklist so Claude tracks progress through multi-step writes. Short skills skip it.
-- **Show bash + JSON literally.** Copy-pasteable examples beat prose. The reader is Claude executing the skill, not a human reading docs.
+- **Number every step.** Long skills (`experiment-launch`) lead with a `- [ ]` checklist so the agent tracks progress through multi-step writes. Short skills skip it.
+- **Show bash + JSON literally.** Copy-pasteable examples beat prose. The reader is an agent executing the skill, not a human reading docs.
 - **Model failure modes as branches**, not as "see error handling section." `experiment-launch` step 6 → 6a (approval) → 6b (checklist) is the pattern: each branch tells the user how to re-run from where the skill stopped.
 - **Write skills track required vs. optional inputs at the top.** Collect what's missing before any state-changing call.
 - **Thread the draft version through chained write skills.** When multiple write skills run in sequence in the same session (e.g. flag-targeting then flag-toggle then flag-publish), each skill should use the `version` number captured by the previous step rather than relying on `version=new` to silently pick a draft. The pattern: if a version is already in context, substitute it for `new` in every endpoint path; if no version is in context (fresh invocation), fall back to `new` (auto-create/reuse) or `/revisions/latest?mine=true`. This makes draft threading explicit and prevents a teammate's concurrent draft from being unexpectedly reused mid-chain.
@@ -134,19 +191,36 @@ When a new API quirk bites you, add it here. Don't fix it by adding logic to `gb
 
 ## Experiment skills: voice authority
 
-`skills/experiment-launch/SKILL.md` was authored directly by GrowthBook's head of data science. **When `experiment-design` (or any other experiment skill) differs from `experiment-launch` on statistical framing, hypothesis discipline, goal-metric counts, guardrail requirements, or other methodology, align the other skill to `experiment-launch` — not the other way around.** The 2026-05-26 overreach review (`notes/skills-overreach-review.md`) caught one drift cycle; future edits should treat `experiment-launch` as the canonical voice on these topics.
+`skills/experiments/references/experiment-launch.md` was authored directly by GrowthBook's head of data science. **When `experiment-design` (or any other experiment skill) differs from `experiment-launch` on statistical framing, hypothesis discipline, goal-metric counts, guardrail requirements, or other methodology, align the other skill to `experiment-launch` — not the other way around.** The 2026-05-26 overreach review (`notes/skills-overreach-review.md`) caught one drift cycle; future edits should treat `experiment-launch` as the canonical voice on these topics.
 
 If a change to `experiment-launch` itself seems warranted, that's a conversation to have with the head of data science before applying — don't unilaterally edit. The same caveat applies to anything in `experiment-launch`'s Guardrails or its statistical commentary in the workflow.
 
 ## Read vs. write discipline
 
-Most skills are read-only or proposal-only. Only three currently write:
+Five workflows must never mutate anything:
 
-- `flag-create` — creates one flag
-- `experiment-launch` — creates an experiment + flag rule + starts it
-- `experiment-stop` — updates experiment status
+- `flag-search`, `flag-graph`, `metric-search` — read-only
+- `experiment-brainstorm`, `experiment-design` — proposal-only; they must not POST an experiment into existence
+- `experiment-analyze` — read-only in the sense that matters: it may POST a snapshot refresh, but it must never stop or modify the experiment
 
-Read-only and proposal-only skills must *say so* in the intro and enforce it in Guardrails ("Propose, do not create. Never POST to ..."). The boundary is in the skill content, not the tooling — both kinds of skills get the same `gb-call` access. Don't blur it.
+`analytics-explore` is a third category worth naming: it writes no GrowthBook configuration but does execute real warehouse queries, which cost the user money. Don't treat "writes nothing" as "free."
+
+Everything else writes. Read-only and proposal-only workflows must *say so* in their intro and enforce it in Guardrails ("Propose, do not create. Never POST to ..."). **The boundary is in the content, not the tooling** — every workflow in a domain inherits the same router `allowed-tools`, so nothing stops a read-only workflow from writing except the words in its file. That's exactly why those words have to be explicit, and it matters more under a router than it did when each skill had its own grant.
+
+## Crossing domains
+
+Yes, workflows reference other domains constantly — `feature-flags` points into `experiments` 18 times, and experiments and analytics point back. The lifecycle doesn't respect the domain split: you stop an experiment, then clean up its flag; you chart a metric, then design a test around it. Two mechanisms, and picking the wrong one is the most likely way to break this structure.
+
+**Sequential handoff — name the sibling skill, in prose.** When the user's *next* job lives in another domain, end your workflow and name where they're going: "the **experiments** skill (`experiment-stop` workflow)". The agent activates that skill and reads that workflow. Use this for every genuine handoff.
+
+**Inline dependency — make the calls yourself.** When another domain's work is a *step inside* your workflow rather than the next job, inline the specific API calls. `experiment-launch` is the model: creating the flag and wiring the experiment-ref rule are steps 4–6 of its own sequence, so it calls `POST /api/v2/features` and `POST /api/v2/features/<id>/revisions/new/rules` directly instead of delegating to `flag-create` and `flag-experiment`. Launching is one atomic job; handing off mid-sequence would lose the state it's carrying and strand the user halfway.
+
+**Never read another domain's reference file.** No `../experiments/references/experiment-stop.md`, and no `${CLAUDE_PLUGIN_ROOT}/skills/...` path into a sibling domain. Two reasons:
+
+- **The path isn't stable across installs.** Under the plugin install everything sits at `<root>/skills/<domain>/`, so a sibling hop resolves. Under `npx skills install` a skill directory is the unit of installation and `${CLAUDE_PLUGIN_ROOT}` isn't set — which is exactly why each domain carries its own `scripts/gb-call` symlink instead of reaching for a shared one. A cross-domain file path works in one mode and silently fails in the other.
+- **The sibling may not be installed at all.** Someone can install `experiments` without `feature-flags`. A named skill reference degrades gracefully — the agent reports it can't find that skill. A hard file path just fails.
+
+The rule of thumb: **`references/` paths are domain-private.** Inside a domain, cross-reference by path. Across domains, cross-reference by skill name and let the host resolve it. If a cross-domain handoff feels too expensive to make the user re-enter, that's a signal the work belongs inline (option 2), not that the boundary should be pierced.
 
 ## API version split
 
@@ -162,7 +236,7 @@ Two surfaces hold credentials: the env var or `~/.config/growthbook/.env` (PATs 
 Conventions every skill must follow:
 
 - **Never echo `GB_API_KEY` in user-facing output.** Mask to last 4 characters when surfacing identity. The skill's stdout/stderr lands in the user's transcript.
-- **Some GrowthBook API responses contain secrets** (SDK keys, webhook signing keys, etc.). The current eight skills don't hit those endpoints. A future skill that does must filter the response before surfacing — don't dump the raw body to the user.
+- **Some GrowthBook API responses contain secrets** (SDK keys, webhook signing keys, etc.). None of the current workflows hit those endpoints. A future workflow that does must filter the response before surfacing — don't dump the raw body to the user.
 - **The `gb-setup` flow names the transcript-exposure risk explicitly** before the user pastes. Any future skill that prompts for a secret must do the same; users deserve to know before they paste.
 - **Recommend scoped, revocable PATs** over personal admin tokens. If a value is ever exposed, the only effective fix is rotation at `<host>/account/personal-access-tokens`.
 
@@ -191,12 +265,15 @@ Each of these gets added only when a real skill needs it. `experiment-analyze` w
 
 ## Naming and lifecycle
 
-Skill names map to **what the user is doing**, not to API endpoints:
+Workflow names map to **what the user is doing**, not to API endpoints:
 
 - Experiments: `brainstorm → design → launch → analyze → stop`
-- Flags: `create`, `discovery` (today); `targeting`, `cleanup` (roadmap)
+- Flags: `create → toggle → targeting → ramp`/`monitoring → cleanup`, with `revisions → review → publish` running underneath all of them
+- Analytics: `metric-search → analytics-explore`
 
-When proposing a new skill, name it after the user's intent. If you find yourself naming a skill after an endpoint (`flag-revisions-publish`), the scope is probably wrong — fold it into the lifecycle skill that uses it.
+When proposing a new workflow, name it after the user's intent. If you find yourself naming one after an endpoint (`flag-revisions-publish`), the scope is probably wrong — fold it into the lifecycle workflow that uses it.
+
+Domain names are the ones that cost context, so they're deliberately generic and few. A new workflow is cheap (a file plus a router row); a new domain needs to justify permanent frontmatter.
 
 ## Rate-limit awareness
 
@@ -208,10 +285,12 @@ GrowthBook is rate-limited at 60 rpm. Skills that fan out (brainstorm pulling 20
 
 ## When in doubt
 
-- Read `flag-create` for the minimal write-skill pattern.
-- Read `flag-discovery` for the read-only / multi-path pattern.
-- Read `experiment-launch` for the full state-machine-with-failure-branches pattern.
-- Read `gb-setup` for the pattern when a skill needs file operations and broader `allowed-tools` — including how to narrow each tool grant to a literal command and how to surface secret-handling risks to the user before they paste.
-- Read `flag-targeting` for two patterns it pioneers: (a) the **warn-and-confirm** guardrail layer — for changes the server allows but the user shouldn't make lightly, like editing `experimentId` on an experiment-ref rule; and (b) the **merge-conflict (409) branch** — halt with the conflict body, don't auto-rebase, let the user resolve in the UI.
-- Read `flag-cleanup` for three patterns it pioneers: (a) the **agent-mediated code-cleanup** flow — skill workflow coordinates code edits via Read/Edit on the user's working tree, batched by file, without expanding `allowed-tools` beyond gb-call; (b) the **archive-then-verify-then-delete safety gate** — a product-safety pause between two API calls (not the workflow-safety of approval), because permanent deletion is a one-way door; (c) the **bypass-asymmetry** awareness — per-token `bypassApprovalChecks` authorizes some destructive paths but not others, and the skill needs to surface this when offering bypass options.
+- Read `skills/feature-flags/SKILL.md` for the router pattern: how a description absorbs 17 workflows' triggers, and how shared conventions get hoisted out of the leaves.
+- Read `feature-flags/references/flag-create.md` for the minimal write-workflow pattern.
+- Read `feature-flags/references/flag-search.md` or `analytics/references/metric-search.md` for the read-only / multi-path pattern.
+- Read `experiments/references/experiment-launch.md` for the full state-machine-with-failure-branches pattern.
+- Read `gb-setup/SKILL.md` for the pattern when a skill needs file operations and broader `allowed-tools` — including how to narrow each tool grant to a literal command and how to surface secret-handling risks to the user before they paste. It's also the one domain that stays a single flat skill, because it has exactly one job.
+- Read `feature-flags/references/flag-targeting.md` for two patterns it pioneers: (a) the **warn-and-confirm** guardrail layer — for changes the server allows but the user shouldn't make lightly, like editing `experimentId` on an experiment-ref rule; and (b) the **merge-conflict (409) branch** — halt with the conflict body, don't auto-rebase, let the user resolve in the UI.
+- Read `feature-flags/references/flag-cleanup.md` for three patterns it pioneers: (a) the **agent-mediated code-cleanup** flow — the workflow coordinates code edits via Read/Edit on the user's working tree, batched by file, without expanding `allowed-tools` beyond gb-call; (b) the **archive-then-verify-then-delete safety gate** — a product-safety pause between two API calls (not the workflow-safety of approval), because permanent deletion is a one-way door; (c) the **bypass-asymmetry** awareness — per-token `bypassApprovalChecks` authorizes some destructive paths but not others, and the workflow needs to surface this when offering bypass options.
+- Read `analytics/references/analytics-explore.md` for the **status-in-the-body** pattern — a `200` that isn't success, so the workflow branches on `exploration.status` rather than the HTTP code.
 - Read `scripts/README.md` before extending the helper.
