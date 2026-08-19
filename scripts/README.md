@@ -24,7 +24,7 @@ gb-call <METHOD> <PATH> [BODY_FILE | -]
 `gb-call` reads config from two sources, in precedence order:
 
 1. **Process environment** — `GB_API_KEY`, `GB_API_URL`. Always wins. Useful for CI and one-off overrides.
-2. **`~/.config/growthbook/.env`** — same keys, `KEY=value` per line, no quoting. Written by `/growthbook:gb-setup`. Only consulted when the corresponding env var is unset.
+2. **`~/.config/growthbook/.env`** — same keys, `KEY=value` per line, no quoting. Written by the `gb-setup` skill. Only consulted when the corresponding env var is unset.
 
 | Var | Required | Default | Notes |
 | --- | --- | --- | --- |
@@ -43,15 +43,15 @@ gb-call <METHOD> <PATH> [BODY_FILE | -]
 
 | Condition | Stderr message routes user to |
 | --- | --- |
-| `GB_API_KEY` not set in env *and* not in `~/.config/growthbook/.env` | `/growthbook:gb-setup` |
-| `401` / `403` from API | `/growthbook:gb-setup` (key invalid, expired, or revoked) |
-| `404` on `api.growthbook.io` | `/growthbook:gb-setup` (likely self-hosted, configure `GB_API_URL`) |
+| `GB_API_KEY` not set in env *and* not in `~/.config/growthbook/.env` | `gb-setup` skill |
+| `401` / `403` from API | `gb-setup` skill (key invalid, expired, or revoked) |
+| `404` on `api.growthbook.io` | `gb-setup` skill (likely self-hosted, configure `GB_API_URL`) |
 | `429` | rate-limit notice (60 rpm); retry after a moment |
 | Anything else | raw status + body |
 
 When adding a new error category, keep two properties intact:
 
-- **The message tells the user what to do**, not just what failed. If the fix is `/growthbook:gb-setup`, name it.
+- **The message tells the user what to do**, not just what failed. If the fix is the `gb-setup` skill, name it without assuming a client-specific invocation syntax.
 - **The raw response body is still shown** below the synthesized hint, so power users can debug without re-running.
 
 ### Why this helper exists

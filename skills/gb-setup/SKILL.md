@@ -1,16 +1,18 @@
 ---
 name: gb-setup
-description: Configure the GrowthBook plugin's API credentials so every other skill can run. Use when the user says "set up growthbook", "configure my api key", "growthbook isn't working", "where do I put my key", or when another skill emits an error pointing here ("GB_API_KEY is not set", "authentication failed"). Writes ~/.config/growthbook/.env with chmod 600 and validates against the live API. For listing flags or running experiments, the other skills handle that.
+description: Configure GrowthBook API credentials so the other skills can run. Use when the user says "set up growthbook", "configure my api key", "growthbook isn't working", "where do I put my key", or when another skill emits an error pointing here ("GB_API_KEY is not set", "authentication failed"). Writes ~/.config/growthbook/.env with chmod 600 and validates against the live API. For listing flags or running experiments, the domain skills handle that.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *) Bash(mkdir -p ~/.config/growthbook) Bash(chmod 700 ~/.config/growthbook) Bash(chmod 600 ~/.config/growthbook/.env) Bash(test -f ~/.config/growthbook/.env)
 ---
 
 # gb-setup
 
-One-skill onboarding for the GrowthBook plugin. Walks the user through `GB_API_KEY` and an optional `GB_API_URL` for self-hosted. Validates the credentials by hitting the live API, then writes `~/.config/growthbook/.env` with `chmod 600`.
+One-skill onboarding for GrowthBook Agent Skills. Walks the user through `GB_API_KEY` and an optional `GB_API_URL` for self-hosted. Validates the credentials by hitting the live API, then writes `~/.config/growthbook/.env` with `chmod 600`.
 
 The API key is a Personal Access Token (PAT) tied to a GrowthBook user, so the API attributes any flags or experiments the write skills create to that user automatically — there's no separate owner identifier to configure.
 
 `gb-call` reads this file when the corresponding environment variables aren't set, so the user gets a one-time config rather than editing their shell rc. Real environment variables always win over the file — useful for CI and one-off overrides.
+
+Resolve the bundled helper for the current client before using it: under the Claude Code plugin it is `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call`; under a standalone Agent Skills install it is `scripts/gb-call` relative to this skill directory. Substitute that resolved command for `<gb-call>` below.
 
 ## Workflow
 
@@ -34,7 +36,7 @@ The API key is a Personal Access Token (PAT) tied to a GrowthBook user, so the A
 
 2. **Collect `GB_API_KEY`** (required). If keeping the existing value, skip. Otherwise, **show the transcript-exposure notice first** so the user can make an informed choice:
 
-   > Before you paste your key: anything you type into this chat is stored in your local Claude Code transcript (`~/.claude/projects/...`) and sent to Anthropic as part of the conversation. The skill will mask the key in its replies, but the value you paste cannot be masked retroactively.
+   > Before you paste your key: anything you type into this chat may be stored by your agent client and is sent to your configured model provider as part of the conversation. The skill will mask the key in its replies, but the value you paste cannot be masked retroactively. Check your client's storage and retention settings if this is a concern.
    >
    > Recommendation: **generate a fresh PAT for this plugin** rather than reusing your personal admin token. That way you can revoke it independently if anything goes wrong, without affecting your other API access.
 
@@ -70,7 +72,7 @@ The API key is a Personal Access Token (PAT) tied to a GrowthBook user, so the A
    ```bash
    GB_API_KEY='<value>' \
    GB_API_URL='<value or empty>' \
-     ${CLAUDE_PLUGIN_ROOT}/scripts/gb-call GET /api/v1/projects
+     <gb-call> GET /api/v1/projects
    ```
 
    Interpret the result:
@@ -92,7 +94,7 @@ The API key is a Personal Access Token (PAT) tied to a GrowthBook user, so the A
 
    The directory's `0700` (owner-only) permission is what protects the file from being readable by other users on the system *during* the next step. Writing the file first and then chmod-ing it leaves a window where the file inherits the user's umask (typically `0022` → mode `0644`, world-readable). Locking the directory closes that window — files inside a `0700` directory aren't reachable by other users regardless of file mode.
 
-   Then write with the Write tool. Format — one `KEY=value` per line, no quoting (our values never contain spaces, `=`, or newlines):
+   Then write with the client's file-writing tool. Format — one `KEY=value` per line, no quoting (our values never contain spaces, `=`, or newlines):
 
    ```
    GB_API_KEY=<value>
@@ -111,13 +113,13 @@ The API key is a Personal Access Token (PAT) tied to a GrowthBook user, so the A
    - Where the file is (`~/.config/growthbook/.env`).
    - What's in it (mask the API key — show only last 4).
    - That env vars take precedence over the file (so CI / one-off overrides keep working).
-   - That re-running `/growthbook:gb-setup` updates the file.
-   - The next thing they probably want: `/growthbook:flag-search` to see their flags, or `/growthbook:experiment-brainstorm` to look at past results.
+   - That re-running the **gb-setup** skill updates the file.
+   - The next thing they probably want: the **feature-flags** skill (`flag-search` workflow) to see their flags, or the **experiments** skill (`experiment-brainstorm` workflow) to look at past results.
 
 ## Guardrails
 
 - **Never echo the API key back in plain text.** Always mask except for the last 4 characters. The skill's output ends up in the user's terminal and transcript.
-- **Surface the transcript-exposure risk before the user pastes a key.** The value typed into the chat is stored in `~/.claude/projects/...` and sent to Anthropic as part of the conversation; the skill cannot retroactively redact it. Always recommend a freshly-scoped PAT over reusing an admin token. This isn't paranoia — it's the right way to handle a workflow that requires a user to paste a secret into a conversational interface.
+- **Surface the transcript-exposure risk before the user pastes a key.** The value typed into chat may be stored by the agent client and is sent to the configured model provider; the skill cannot retroactively redact it. Always recommend a freshly-scoped PAT over reusing an admin token. This isn't paranoia — it's the right way to handle a workflow that requires a user to paste a secret into a conversational interface.
 - **Revocation guidance is a real fix, not a footnote.** If a key was ever exposed, the only effective remediation is to revoke and rotate it at `<host>/account/personal-access-tokens`. Surface this whenever the user expresses concern about an old or shared key.
 - **Directory at `0700` before file write; file at `0600` after.** The order matters. The Write tool inherits the user's umask, which on most systems creates files at mode `0644` (world-readable). Locking the *directory* down first means even the brief window between Write and chmod is not reachable by other users. Then chmod the file as defense in depth. Both steps are non-optional; skipping either turns the PAT into a leak.
 - **Env vars take precedence over the file.** If `process.env.GB_API_KEY` is set, gb-call ignores the file value. Surface this if both are configured so the user understands what's actually in effect.
@@ -145,6 +147,6 @@ Lines starting with `#` are comments. Blank lines are ignored. No quoting; value
 
 ## Handoffs
 
-- `flag-search` — natural first call after setup completes (no required inputs, exercises the new config).
-- `experiment-brainstorm` — if the org already has stopped experiments, surfaces them immediately.
+- The **feature-flags** skill (`flag-search` workflow) — natural first call after setup completes (no required inputs, exercises the new config).
+- The **experiments** skill (`experiment-brainstorm` workflow) — if the org already has stopped experiments, surfaces them immediately.
 - Any skill that emits a config-related error points back here.

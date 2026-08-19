@@ -4,7 +4,7 @@
 // Every `growthbook` plugin skill calls this. Reads GB_API_KEY (and optional
 // GB_API_URL) from env first, falling back to ~/.config/growthbook/.env
 // when env vars are unset. Env always wins over the file (POSIX convention).
-// On non-2xx, writes a targeted error to stderr that points at /growthbook:setup
+// On non-2xx, writes a targeted error to stderr that points at the gb-setup skill
 // when the failure looks like a config problem.
 //
 // Usage:
@@ -18,7 +18,7 @@
 //
 // Config sources (in precedence order):
 //   1. process.env.GB_API_KEY / GB_API_URL
-//   2. ~/.config/growthbook/.env  (KEY=value per line; written by /growthbook:setup)
+//   2. ~/.config/growthbook/.env  (KEY=value per line; written by gb-setup)
 
 const { readFileSync, existsSync } = require("node:fs");
 const { homedir } = require("node:os");
@@ -54,7 +54,7 @@ const apiUrl = process.env.GB_API_URL || fileEnv.GB_API_URL || "https://api.grow
 if (!apiKey) {
   die(
     "GB_API_KEY is not set.\n" +
-      "Run /growthbook:setup to configure it, or export GB_API_KEY in your shell.",
+      "Run the gb-setup skill to configure it, or export GB_API_KEY in your shell.",
   );
 }
 
@@ -66,13 +66,13 @@ const CONTROL_RE = /[\s\x00-\x1f\x7f]/;
 if (CONTROL_RE.test(apiKey)) {
   die(
     "GB_API_KEY contains whitespace or control characters.\n" +
-      "Re-run /growthbook:setup to set a clean value.",
+      "Re-run the gb-setup skill to set a clean value.",
   );
 }
 if (CONTROL_RE.test(apiUrl)) {
   die(
     "GB_API_URL contains whitespace or control characters.\n" +
-      "Re-run /growthbook:setup to set a clean value.",
+      "Re-run the gb-setup skill to set a clean value.",
   );
 }
 
@@ -118,7 +118,7 @@ function explainHttpError(status, statusText, responseBody, requestUrl) {
     return (
       `HTTP ${status} ${statusText} on ${upperMethod} ${requestUrl}\n` +
       `Authentication failed. Your GB_API_KEY may be invalid, expired, or revoked.\n` +
-      `Run /growthbook:setup to refresh it.\n` +
+      `Run the gb-setup skill to refresh it.\n` +
       (responseBody ? responseBody + "\n" : "")
     );
   }
@@ -126,7 +126,7 @@ function explainHttpError(status, statusText, responseBody, requestUrl) {
     return (
       `HTTP 404 on ${upperMethod} ${requestUrl}\n` +
       `Got 404 from api.growthbook.io. If you're using a self-hosted GrowthBook instance,\n` +
-      `run /growthbook:setup to configure GB_API_URL.\n` +
+      `run the gb-setup skill to configure GB_API_URL.\n` +
       (responseBody ? responseBody + "\n" : "")
     );
   }
