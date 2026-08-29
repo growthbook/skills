@@ -34,6 +34,8 @@ gb-call GET '/api/v1/metrics?limit=100'
 
 List them separately and label them: legacy metrics work in experiments but **cannot be charted in Product Analytics** — only fact metrics can.
 
+This endpoint includes archived metrics by default — pass `includeArchived=false` before reporting a count. If the user wants to *move* these onto fact tables rather than just see them, hand off to `references/metric-migrate.md`.
+
 ### Path B — Lookup and detail ("find the revenue metric", "what's in the orders fact table?")
 
 Fetch the list (Path A) and match client-side by name — matching is on your side, so try substrings and synonyms before declaring a miss ("purchase" for "order", "signup" for "registration").
@@ -59,7 +61,7 @@ Report the chartable set and hand off to `references/analytics-explore.md` to ac
 
 ## Guardrails
 
-- **Read-only.** Never POST, PUT, or DELETE from this skill. Route chart-running to `references/analytics-explore.md` and metric creation to the GrowthBook UI.
+- **Read-only.** Never POST, PUT, or DELETE from this skill. Route chart-running to `references/analytics-explore.md`, legacy-to-fact-table migration to `references/metric-migrate.md`, and ad-hoc metric creation to the GrowthBook UI.
 - **There is no server-side search.** `/fact-metrics` and `/fact-tables` have no name/query param — fetch and filter client-side. On large orgs paginate the full set first (100 per page), and mind the 60 rpm rate limit.
 - **"Official" is `managedBy: "admin"`.** There is no `official` field on the API response — the Official badge in the GrowthBook UI corresponds to `managedBy: "admin"`. `"api"` means managed by API automation; `""` means anyone can edit it in the UI.
 - **Legacy metrics are not chartable.** `/api/v1/metrics` entries work as experiment metrics but Product Analytics explorations only accept fact metrics. Don't promise a chart for one.
@@ -80,5 +82,6 @@ Report the chartable set and hand off to `references/analytics-explore.md` to ac
 ## Handoffs
 
 - `references/analytics-explore.md` — to chart a metric or fact table found here
+- `references/metric-migrate.md` — when the audit turns up legacy metrics the user wants migrated to fact tables
 - the **experiments** skill (`experiment-design` workflow) — to pick goal/guardrail metrics for a new experiment
 - the **experiments** skill (`experiment-analyze` workflow) — when the user's question is about an experiment's metric results, not the metric catalog

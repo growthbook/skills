@@ -8,7 +8,7 @@ The skills call the [GrowthBook REST API](https://docs.growthbook.io/api) direct
 
 ## What's included
 
-Four skills, one per domain. Each one is a router: it loads a short index, then reads only the workflow that matches what you asked for. The 24 workflows live as reference files inside their skill and stay out of context until they're needed.
+Four skills, one per domain. Each one is a router: it loads a short index, then reads only the workflow that matches what you asked for. The 25 workflows live as reference files inside their skill and stay out of context until they're needed.
 
 ### `feature-flags`
 
@@ -52,6 +52,7 @@ Turn the metrics and fact tables you already use for experimentation into ad-hoc
 | --- | --- |
 | `metric-search` | Search, list, and audit fact metrics and fact tables — definitions, columns, and what's chartable. Read-only. |
 | `analytics-explore` | Build and run a chart: a metric over time, a fact-table aggregation, or a raw warehouse table. Returns the numbers plus a deep link to the rendered chart. |
+| `metric-migrate` | Migrate legacy `met_...` metrics to fact tables and fact metrics — group them by shared SQL, bulk-import the equivalents, then archive the originals. Writes; gated behind a dry run. |
 
 ### `gb-setup`
 
@@ -117,10 +118,11 @@ You don't invoke workflows directly — the domain skill picks one from your req
 - **Flag-first:** `flag-create` → `flag-toggle` → `flag-targeting` → `flag-ramp` / `flag-monitoring` → `flag-cleanup`
 - **Experiment on an existing flag:** `flag-experiment` → `experiment-launch` (reuses the existing flag) → `experiment-stop` → `flag-cleanup`
 - **Analytics:** `metric-search` → `analytics-explore` → `experiment-design` (when a chart surfaces something worth testing)
+- **Legacy metric migration:** `metric-search` (audit) → `metric-migrate` → `analytics-explore` (sanity-check the new fact metrics against the old numbers)
 
 ## What these skills do not do
 
-- **No metric or datasource creation.** Create metrics and datasources in the GrowthBook UI and reference them by ID in the experiment and analytics skills.
+- **No datasource creation, and no ad-hoc metric creation.** Create datasources in the GrowthBook UI and reference them by ID. Metrics are the same, with one exception: `metric-migrate` creates fact tables and fact metrics, but only as the mechanical equivalent of legacy metrics that already exist — it never designs a new metric from scratch.
 - **No SDK code generation.** Follow GrowthBook's SDK docs; these skills manage flags and experiments via the REST API, not the SDK.
 - **No bandit workflows yet.** GrowthBook's REST API supports multi-armed bandit experiments and separate Enterprise beta Contextual Bandits, but these skills currently target standard A/B tests. They identify either bandit type and halt rather than apply fixed-allocation experiment guidance to an adaptive experiment.
 - **No silent retries or rate-limit backoff in the helper.** GrowthBook is rate-limited at 60 rpm. The skills that fan out cap their call counts; multi-tenant orgs hitting concurrent requests may still see `429`s, which `gb-call` surfaces explicitly rather than retrying.
@@ -170,7 +172,7 @@ skills/
   analytics/
     SKILL.md
     references/
-      metric-search.md  analytics-explore.md
+      metric-search.md  analytics-explore.md  metric-migrate.md
   gb-setup/
     SKILL.md                           # one-time onboarding; no references/
 
