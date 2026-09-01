@@ -59,7 +59,7 @@ Report the chartable set and hand off to `references/analytics-explore.md` to ac
 
 ## Guardrails
 
-- **Read-only.** Never POST, PUT, or DELETE from this skill. Route chart-running to `references/analytics-explore.md` and metric creation to the GrowthBook UI.
+- **Read-only.** Never POST, PUT, or DELETE from this skill. Route chart-running to `references/analytics-explore.md` and metric creation to `references/metric-create.md`.
 - **There is no server-side search.** `/fact-metrics` and `/fact-tables` have no name/query param — fetch and filter client-side. On large orgs paginate the full set first (100 per page), and mind the 60 rpm rate limit.
 - **"Official" is `managedBy: "admin"`.** There is no `official` field on the API response — the Official badge in the GrowthBook UI corresponds to `managedBy: "admin"`. `"api"` means managed by API automation; `""` means anyone can edit it in the UI.
 - **Legacy metrics are not chartable.** `/api/v1/metrics` entries work as experiment metrics but Product Analytics explorations only accept fact metrics. Don't promise a chart for one.
@@ -80,5 +80,6 @@ Report the chartable set and hand off to `references/analytics-explore.md` to ac
 ## Handoffs
 
 - `references/analytics-explore.md` — to chart a metric or fact table found here
+- `references/metric-create.md` — when the metric the user needs does not exist yet
 - the **experiments** skill (`experiment-design` workflow) — to pick goal/guardrail metrics for a new experiment
 - the **experiments** skill (`experiment-analyze` workflow) — when the user's question is about an experiment's metric results, not the metric catalog
