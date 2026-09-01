@@ -77,7 +77,9 @@ gb-call GET /api/v1/data-sources
 gb-call GET '/api/v1/fact-tables?limit=100'
 ```
 
-Record for each legacy metric: `id`, `name`, `description`, `type`, `datasourceId`, `projects`, `tags`, `owner`, `managedBy`, `behavior` (goal, capping, window), and the `sql` block — `sql.conversionSQL`, `sql.identifierTypes`, `sql.userAggregationSQL`, `sql.denominatorMetricId`. Note whether a `sqlBuilder` or `mixpanel` block is present.
+Paginate fact tables with `offset` while `hasMore` is true. The complete set is required for collision detection; checking only the first page can turn a planned create into an unintended update.
+
+Record for each legacy metric: `id`, `name`, `description`, `type`, `datasourceId`, `projects`, `tags`, `owner`, `managedBy`, the full `behavior` block (goal, capping, window, priors, risk thresholds, sample-size and effect thresholds), and the `sql` block — `sql.conversionSQL`, `sql.identifierTypes`, `sql.userAggregationSQL`, `sql.denominatorMetricId`. Note whether a `sqlBuilder` or `mixpanel` block is present.
 
 ### 2. Triage into migratable, needs-decision, and blocked
 
@@ -86,14 +88,14 @@ Sort every metric into exactly one bucket. Report the counts before doing anythi
 **Blocked — cannot migrate, do not attempt:**
 
 - **A `mixpanel` block is present** — the datasource is Mixpanel. Fact tables are SQL-only.
-- **The datasource is Google Analytics** — neither `sql` nor `mixpanel` is populated; there is nothing to build a fact table from.
+- **The datasource is Google Analytics** — identify this from the matching `datasourceId` returned by `GET /api/v1/data-sources`, not merely from missing `sql` and `mixpanel` blocks. A malformed warehouse metric can also lack both blocks.
 
 **Needs a decision — surface each one, migrate only what the user resolves:**
 
-- **`sqlBuilder` is present** (`queryFormat: "builder"`). These metrics have an **empty** `sql.conversionSQL` and carry `tableName` / `valueColumnName` / `timestampColumnName` / `conditions` instead. Never let them into step 3: grouping on empty SQL collapses every builder metric into one nonsense fact table. Either synthesize SQL from the builder fields and show it to the user for approval, or leave the metric legacy.
-- **A custom aggregation** — `sql.userAggregationSQL` is anything other than `SUM(value)`. Fact tables support only `sum`, `max`, and `count distinct`; arbitrary aggregation SQL was dropped deliberately. Note that `SUM(value)` is also what the API returns when a legacy metric set no aggregation at all, so treat that exact string as "no custom aggregation" rather than as a custom one.
+- **`sqlBuilder` is present.** The public API exposes the builder object, not the internal `queryFormat` field. These metrics have an **empty** `sql.conversionSQL` and carry `tableName` / `valueColumnName` / `timestampColumnName` / `conditions` instead. Never let them into step 3: grouping on empty SQL collapses every builder metric into one nonsense fact table. Either synthesize SQL from the builder fields and show it to the user for approval, or leave the metric legacy.
+- **An unrecognized custom aggregation.** Normalize case and insignificant whitespace only, then map `SUM(value)` → `sum`, `MAX(value)` → `max`, and `COUNT(DISTINCT value)` → `count distinct`. Anything else needs a decision because arbitrary aggregation SQL does not map mechanically. `hll merge` and `kll merge` exist only for compatible pre-built sketch columns; do not infer either from legacy SQL.
 
-**Migratable — everything else**, including every denominator case. A metric qualifies when it has a non-empty `sql.conversionSQL`, no `sqlBuilder`, no `mixpanel`, and `userAggregationSQL` of `SUM(value)`.
+**Migratable — everything else**, including every denominator case. A metric qualifies when it has a non-empty `sql.conversionSQL`, no `sqlBuilder`, no `mixpanel`, and one of the three recognized `userAggregationSQL` forms above.
 
 **`managedBy: "config"` metrics migrate but cannot be archived.** The update path rejects everything except `analysis` / `analysisError` / `queries` / `runStarted`, so step 10 must skip them. The replacement fact metric's `replaces` still surfaces the pointer on the legacy metric's page, so the duplicate is signposted rather than silent. Flag them in the dry run and tell the user to retire them in `config.yml`.
 
@@ -108,7 +110,7 @@ Resolve denominators by walking the chain. For a metric with `sql.denominatorMet
 
 **The single-binomial-denominator default is `ratio`, and it changes the numbers.** Legacy treated one binomial denominator as an activation filter — the denominator had to convert first, and only those users counted. A fact `ratio` computes both sides independently and divides. The results will differ, and that is usually the *desired* correction rather than a regression, which is why it is the default. But it is never silent: every metric in this bucket must appear in the step 6 dry run under its own heading, and the user can override any of them to `funnel`.
 
-**A chain of two or more binomial denominators becomes one funnel metric.** `A → denominator B → denominator C` is a three-step ordered sequence, and a single funnel metric replaces all three legacy metrics rather than producing one fact metric each. Order the steps from the deepest denominator forward: `C`, then `B`, then `A`. Funnel metrics require the `funnel-metrics` premium feature — the step 6 dry run reports the failure per metric if the org lacks it.
+**A chain of two or more binomial denominators becomes one funnel metric.** `A → denominator B → denominator C` is a three-step ordered sequence, and a single funnel metric replaces all three legacy metrics rather than producing one fact metric each. Order the steps from the deepest denominator forward: `C`, then `B`, then `A`. All step fact tables must share one datasource, a funnel may use at most 20 steps and 5 distinct fact tables, and only sequential ordering is supported. Move a chain that exceeds those limits to needs-decision. Funnel metrics also require the `funnel-metrics` premium feature — the step 6 dry run reports the failure per metric if the org lacks it.
 
 Chains where a denominator resolves to a metric that is itself blocked or needs-decision cannot be migrated — move the whole chain to needs-decision and say which link broke it.
 
@@ -126,7 +128,7 @@ Each resulting group becomes one fact table:
 - **`projects`** / **`tags`** — the intersection of the group's metrics' projects, and the union of their tags. An empty `projects` array means "all projects"; only narrow when every metric in the group agrees.
 - **`columns`** — see below.
 
-Before importing, check each proposed `id` against the fact tables fetched in step 1. If one already exists, you are updating it, and **the datasource cannot be changed** on an existing fact table — the import rejects that resource. Pick a fresh id or drop that group.
+Before importing, check each proposed `id` against the fact tables fetched in step 1. If one already exists, you are updating it, and **the datasource cannot be changed** on an existing fact table — the import rejects that resource. On a first run, treat an existing id as a collision and pick a fresh id or drop that group. On a deliberate retry, allow the update only after verifying that the existing resource is the one created by this migration and still matches the approved mapping.
 
 **Columns carry the display formatting.** This is the main thing that moves during migration: legacy metrics encoded currency-vs-duration in the metric `type`, while fact tables attach it to the column. For every group containing a non-binomial metric, declare the `value` column explicitly:
 
@@ -140,11 +142,11 @@ Two cautions. Legacy `duration` metrics store whatever unit their SQL returned �
 
 Columns you do not declare are auto-detected by a background job queued at import time, so a freshly imported fact table may briefly show undetected columns in the UI. That is expected and does not block metric creation.
 
-**Tier 2 (`consolidate` grouping only).** After exact grouping, look for groups whose SQL differs only by a `WHERE` clause. Propose merging them into one fact table using the broader (or unfiltered) SQL, with each narrower variant becoming a `factTableFilters` entry whose `value` is the SQL expression alone (e.g. `device_type = 'mobile'`) — then reference the filter from the metric's `numerator.rowFilters` with `operator: "sql_expr"`. Never do this silently: show the before-and-after SQL for each merge and get a per-group yes. If the SQL differs anywhere but the `WHERE` clause, do not propose it.
+**Tier 2 (`consolidate` grouping only).** After exact grouping, look for groups whose SQL differs only by a `WHERE` clause. Propose merging them into one fact table using the broader (or unfiltered) SQL, with each narrower variant becoming a `factTableFilters` entry whose `value` is the SQL expression alone (e.g. `device_type = 'mobile'`). Reference that saved filter from the metric with `rowFilters: [{ "operator": "saved_filter", "values": ["<filter-id>"] }]`. Never create a saved filter and then inline the same expression with `sql_expr` — that leaves the saved resource unused. Never consolidate silently: show the before-and-after SQL for each merge and get a per-group yes. If the SQL differs anywhere but the `WHERE` clause, do not propose it.
 
 ### 4. Map each legacy metric to a fact metric
 
-One fact metric per migratable legacy metric.
+Create one fact metric per migratable legacy metric, except when a denominator chain is deliberately consolidated into one funnel metric replacing the whole chain.
 
 **`id`** — deterministic and traceable: `fact__from_<legacy-id>`, e.g. `fact__from_met_abc123`. Bulk import prefixes `fact__` automatically when it is missing, so passing it explicitly just makes the payload match what gets created. Deterministic ids make the run idempotent.
 
@@ -155,14 +157,14 @@ One fact metric per migratable legacy metric.
 | Legacy | Fact metric | `numerator` |
 | --- | --- | --- |
 | `binomial`, no denominator | `proportion` | `column: ""` — the server forces `$$distinctUsers` regardless |
-| `count` / `duration` / `revenue`, no denominator | `mean` | `column: "value"`, `aggregation: "sum"` |
-| any, one `count` denominator | `ratio` | `column: "value"`, `aggregation: "sum"`, plus a `denominator` object |
+| `count` / `duration` / `revenue`, no denominator | `mean` | `column: "value"`, with the aggregation mapped from `userAggregationSQL` |
+| any, one `count` denominator | `ratio` | `column: "value"`, with the mapped aggregation, plus a `denominator` object |
 | any, one `binomial` denominator | `ratio` (default) | as above — for a `binomial` numerator use `column: ""` |
 | chain of 2+ binomial denominators | `funnel` | none — funnel metrics reject both `numerator` and `denominator` |
 
-Legacy metric SQL always names its numeric column `value`, which is why `"value"` is the faithful column for non-binomial metrics. A `count` metric whose SQL selects `1 as value` sums to a row count, so `sum` over `value` still reproduces it.
+Legacy metric SQL always names its numeric column `value`, which is why `"value"` is the faithful column for non-binomial metrics. Carry the aggregation mapping from triage rather than forcing every metric to `sum`. A `count` metric whose SQL selects `1 as value` and uses `SUM(value)` still maps to a row count.
 
-For `ratio`, the `denominator` object points at the denominator metric's **fact table** — resolve which group the denominator metric landed in during step 3 and use `{ "factTableId": "<that group's id>", "column": "value", "aggregation": "sum" }`. A `binomial` denominator has no `value` column, so use `{ "factTableId": "<group id>", "column": "$$distinctUsers" }` for it. If the denominator metric was blocked or needs-decision in step 2, the numerator metric cannot be migrated either; move it to needs-decision.
+For `ratio`, the `denominator` object points at the denominator metric's **fact table** — resolve which group the denominator metric landed in during step 3 and use `{ "factTableId": "<that group's id>", "column": "value", "aggregation": "<mapped aggregation>" }`. A `binomial` denominator has no `value` column, so use `{ "factTableId": "<group id>", "column": "$$distinctUsers" }` for it. Numerator and denominator fact tables must use the same datasource. If the denominator metric was blocked, needs-decision, or belongs to a different datasource, the numerator metric cannot be migrated mechanically; move it to needs-decision.
 
 For `funnel` (a chain of two or more binomial denominators), build one metric with no numerator and no denominator, and an ordered `funnelSettings.steps` array running deepest-denominator-first:
 
@@ -182,9 +184,9 @@ For `funnel` (a chain of two or more binomial denominators), build one metric wi
 
 Each step's `name` is the legacy metric it came from, and its `factTableId` is whichever step-3 group that metric's SQL landed in. `rowFilters`, `optional`, and `name` are all required on every step; `conversionWindow` is nullable. Minimum two steps. The chain's legacy conversion windows do not map onto funnel steps one-for-one — leave `conversionWindow` null and tell the user to set the per-step windows in the UI.
 
-**Carry over the rest** from the legacy metric: `name`, `description`, `owner`, `projects`, `tags`, `inverse` (from `behavior.goal === "decrease"`), `cappingSettings`, and `windowSettings`. The window and capping shapes match the legacy `behavior` block field-for-field, so they copy across directly — except for capping on a `ratio` metric, which supports only `percentile`. The API will happily accept an `absolute` cap on a ratio metric — only the UI prevents it — so if a legacy metric heading for `ratio` has `absolute` capping, surface it and let the user choose percentile or no capping. Do not just pass it through.
+**Carry over the rest** from the legacy metric: `name`, `description`, `owner`, `projects`, `tags`, `inverse` (from `behavior.goal === "decrease"`), `cappingSettings`, `windowSettings`, `minPercentChange`, `maxPercentChange`, `minSampleSize`, `targetMDE`, `riskThresholdSuccess`, and `riskThresholdDanger`. Those analysis thresholds move from the legacy `behavior` object to top-level fact-metric fields; omitting them silently substitutes organization defaults. The window and capping shapes otherwise copy field-for-field, with two capping exceptions. A `ratio` supports only `percentile`; the API accepts an `absolute` cap without complaint, so let the user choose percentile or no capping. A `funnel` rejects all capping, so omit `cappingSettings` and report that the legacy cap could not carry over.
 
-Leave `priorSettings` and `regressionAdjustmentSettings` unset so the fact metrics inherit organization defaults, unless the legacy metric overrode them.
+Copy `priorSettings` when the legacy metric explicitly overrode the organization prior. Legacy metrics have no regression-adjustment setting to map, so leave `regressionAdjustmentSettings` unset and report that it inherits the organization default.
 
 ### 5. Build the bulk-import payload
 
@@ -242,7 +244,7 @@ gb-call POST /api/v1/bulk-import/facts ./migration-payload.json
 { "success": true, "dryRun": true, "factTablesAdded": 3, "factTablesUpdated": 0, "factTableFiltersAdded": 0, "factTableFiltersUpdated": 0, "factMetricsAdded": 12, "factMetricsUpdated": 0, "errors": [] }
 ```
 
-**A `200` is not success.** A dry run collects every failing resource instead of stopping at the first, so branch on `success` and read `errors[]` — each entry names the `resourceType`, the `id`, and the `message`. Fix the payload and re-run the dry run until `errors` is empty. The counts tell you what a live run would write; any `*Updated` above zero means you are hitting an existing resource, which is expected on a re-run and a red flag on a first run.
+**A `200` is not success.** A dry run collects non-permission validation failures instead of stopping at the first, so branch on `success` and read `errors[]` — each entry names the `resourceType`, the `id`, and the `message`. A permission failure is different: dry-run mode immediately returns `403` instead of collecting it in `errors[]`. Surface that failure and stop. Fix other payload failures and re-run the dry run until `errors` is empty. The counts tell you what a live run would write; any `*Updated` above zero means you are hitting an existing resource, which is expected on a re-run and a red flag on a first run.
 
 Then show the user, before any write:
 
@@ -280,11 +282,13 @@ Because ids are deterministic, a corrected re-run upserts the resources that lan
 gb-call GET '/api/v1/fact-metrics?limit=100'
 ```
 
-For each expected `fact__from_<legacy-id>`, check it exists, its `numerator.factTableId` matches the intended fact table, and `replaces` contains the legacy id. Build the legacy-id → fact-metric-id map from what actually exists; steps 9 and 10 use only verified pairs.
+Paginate with `offset` while `hasMore` is true. For each non-funnel metric, check the expected `fact__from_<legacy-id>` exists, its `numerator.factTableId` matches the intended fact table, and `replaces` contains the legacy id. For each consolidated funnel, verify the single funnel metric exists, its ordered `funnelSettings.steps` match the approved chain, and `replaces` contains every legacy id in that chain. Build the legacy-id → fact-metric-id map from what actually exists, mapping every chain member to the same funnel id; steps 9 and 10 use only verified pairs.
 
 ### 9. Update downstream metric consumers
 
 Two things hold metric ids and keep working after the migration without ever pointing at the new fact metrics: **metric groups** and **experiment templates**.
+
+Before changing either, run `GET /api/v1/usage/metrics?ids=<legacy ids>` and retain the running-experiment map. This call resolves metric-group membership, so it identifies groups whose replacement would change a running experiment on its next snapshot. The pre-write check is for informed approval; step 10 repeats it after consumer updates as the final archive gate.
 
 #### 9a. Metric groups
 
@@ -295,10 +299,10 @@ Swap migrated ids in place. `replaces` covers the historical case: a snapshot ta
 1. List the groups and find the ones containing metrics you migrated:
 
    ```bash
-   gb-call GET '/api/v1/metric-groups?limit=100'
+   gb-call GET /api/v1/metric-groups
    ```
 
-   Match client-side on `metrics[]` containing any migrated legacy id.
+   The default CRUD list route has no query parameters or pagination; `?limit=100` is rejected. Match client-side on `metrics[]` containing any migrated legacy id.
 
 2. Write back the substituted list:
 
@@ -308,7 +312,7 @@ Swap migrated ids in place. `replaces` covers the historical case: a snapshot ta
 
 Members you did **not** migrate stay as their original legacy ids — a group may legitimately end up mixed.
 
-**Two things to surface rather than decide.** A running experiment on the group starts measuring the fact metric on its next refresh; that is usually what the user wants, but changing metrics mid-flight is theirs to approve. And where a denominator chain collapsed into one funnel metric, a group that held all three legacy metrics becomes a group holding one funnel — the bundle's meaning changes, so call it out individually.
+**Two things to surface rather than decide.** If the step-9 usage check found a running experiment on the group, show the group, experiment ids, and substitution and require explicit confirmation before writing that group; otherwise leave it unchanged. A confirmed replacement starts measuring the fact metric on the next snapshot and changes the metric definition mid-flight. Also, where a denominator chain collapsed into one funnel metric, a group that held all three legacy metrics becomes a group holding one funnel — the bundle's meaning changes, so call it out individually.
 
 #### 9b. Experiment templates
 
@@ -338,7 +342,7 @@ echo '{"goalMetrics":["fact__from_met_abc123"],"activationMetric":"fact__from_me
 
 Only for metrics whose replacement was verified in step 8, only if the user chose to archive, and never for `managedBy: "config"` metrics.
 
-**Run the usage check for the whole batch in one call**, before touching anything:
+**Repeat the usage check for the whole batch**, immediately before archiving anything:
 
 ```bash
 gb-call GET '/api/v1/usage/metrics?ids=met_abc123,met_def456,met_ghi789'
@@ -381,14 +385,17 @@ Remind the user that archiving is reversible (`archived: false`) and that experi
 ## Guardrails
 
 - **`GET /api/v1/metrics` includes archived metrics by default.** Pass `includeArchived=false` or you will re-migrate retired metrics.
+- **This workflow requires the post-v5.0.1 bulk-import and replacement-link API.** GrowthBook Cloud must contain [growthbook#6704](https://github.com/growthbook/growthbook/pull/6704) and [growthbook#6731](https://github.com/growthbook/growthbook/pull/6731); self-hosted v5.0.1 predates both. On an older host, halt rather than importing replacements without the required validation and `replaces` behavior.
 - **Bulk import defaults `managedBy` to `"api"`, which locks the resource out of the UI.** Send `defaultManagedBy: ""` at the top level of the payload; a per-resource `managedBy` overrides it. Fact table filters inherit `"api"` only from an `"api"` parent table.
-- **A `200` from a dry run is not success.** `dryRun: true` collects every failure instead of stopping at the first, and still returns `200` — branch on `success` and read `errors[]` (`resourceType`, `id`, `message`).
+- **A `200` from a dry run is not success.** `dryRun: true` collects non-permission validation failures and still returns `200` — branch on `success` and read `errors[]` (`resourceType`, `id`, `message`). A permission failure short-circuits the dry run with `403`.
 - **Bulk import is not transactional.** A live run stops at the first failure and returns `400` (`403` for permissions) with the write counts and `errors[]` — everything before that point is already created. Re-fetch, fix, dry-run, re-run; deterministic ids make the retry an upsert.
 - **Funnel metrics take `funnelSettings` and reject `numerator` and `denominator`.** Sending either, or omitting `funnelSettings`, is a validation error. They also require the `funnel-metrics` premium feature, which the dry run reports per metric.
+- **Funnel metrics are limited to 20 steps and 5 distinct fact tables.** Every step's table must use the metric's datasource, and only sequential ordering is currently accepted. Route longer or cross-datasource chains to needs-decision.
+- **Funnel metrics reject capping.** Do not copy a legacy chain's `cappingSettings` onto the funnel; omit it and report the behavior difference.
 - **Ratio semantics changed — this is a math change, not a shape change.** A legacy metric with a binomial denominator behaved like a funnel: the denominator had to convert first, and only those users counted. A fact `ratio` computes both sides independently and divides, so the numbers move. `ratio` is still the right default for a single binomial denominator — it is the correction most users want — but it must be called out per metric in the dry run with a `funnel` override offered. A chain of two or more binomial denominators is a different case: that is a genuine ordered sequence and becomes a `funnel`.
 - **Ratio metrics support only `percentile` capping, but the API does not enforce it.** Only the GrowthBook UI drops an absolute cap when a metric becomes a ratio; the API accepts `cappingSettings.type: "absolute"` on a ratio metric without complaint, leaving an unsupported configuration in place. Convert absolute caps to percentile or drop them yourself during step 4 — nothing downstream will catch it. (Legacy metrics also capped numerator and denominator separately; fact ratio metrics have one capping setting for the pair.)
 - **`replaces` is what keeps historical results readable.** Without it, an experiment switched to the fact metric renders nothing for snapshots taken before the switch. Set it on every migrated metric, list the whole chain on a consolidated funnel, and never include the metric's own id. Replaced ids are not checked for existence, so a typo fails silently rather than erroring — verify it in step 8.
-- **Custom aggregations do not exist in fact tables.** Only `sum`, `max`, and `count distinct`. Treat `sql.userAggregationSQL` of exactly `SUM(value)` as "none" — that is the value the API returns when a legacy metric set no aggregation — and anything else as unmigratable.
+- **Map only recognized legacy aggregation forms.** Normalize case and insignificant whitespace, then map `SUM(value)`, `MAX(value)`, and `COUNT(DISTINCT value)` to `sum`, `max`, and `count distinct`. `hll merge` and `kll merge` exist only for compatible pre-built sketch columns. Route every other legacy SQL expression to needs-decision.
 - **Builder-mode metrics have empty `sql.conversionSQL`.** When `sqlBuilder` is present, the SQL string is empty and the definition lives in `tableName` / `valueColumnName` / `conditions`. Grouping on SQL without excluding these merges every builder metric into one bogus fact table.
 - **`managedBy: "config"` metrics cannot be archived.** The update path allows only `analysis`, `analysisError`, `queries`, and `runStarted` and throws on anything else. Migrate the definition, set `replaces` so the pointer shows on the legacy metric's page, and tell the user to retire the original in `config.yml`.
 - **A fact table's datasource is immutable once it exists.** Importing an existing fact table id with a different `datasource` fails that resource. Check proposed ids against the existing fact tables first.
@@ -396,6 +403,7 @@ Remind the user that archiving is reversible (`archived: false`) and that experi
 - **Fact table ids must match `^[-a-zA-Z0-9_]+$`.** Fact metric ids are auto-prefixed with `fact__` when the prefix is missing — pass it explicitly so the payload matches reality.
 - **Deterministic ids are what make a re-run safe.** Bulk import upserts by id. Slug-derived or randomly generated ids turn a retry into a second set of duplicates.
 - **Experiment templates are by-value; metric groups are by-reference. Do not treat them alike.** `POST /api/v1/experiments` spreads the template's defaults into the payload at creation and persists the result, keeping `templateId` only as provenance — so editing a template never touches an existing experiment. A metric group is resolved at read time, so editing one reaches backwards into how past experiments are rendered.
+- **The metric-group list endpoint is unpaginated and rejects query parameters.** Call `GET /api/v1/metric-groups` exactly; the default `ApiModel` list validator uses `querySchema: z.never()`.
 - **`POST /api/v1/experiment-templates/bulk-import` takes full create bodies, not partials.** Its `data` is `apiCreateExperimentTemplateBody` with `templateMetadata`, `type`, `datasource`, `exposureQueryId`, `statsEngine`, and `targeting` all required — so a partial round-trip silently rewrites the template. Use one `PUT /api/v1/experiment-templates/:id` per template instead; the update body is a true partial.
 - **Archive is the destructive half; keep it last and gated.** Never archive before the replacement is verified to exist (step 8), and never archive a metric feeding a running experiment. It is reversible via `archived: false`, unlike a delete — which this workflow never performs.
 - **The usage check only sees experiments the token can read.** `GET /api/v1/usage/metrics` says so explicitly: without admin or cross-project experiment read access, it may under-report. An under-report here means archiving a metric that is still feeding someone's running experiment. On a scoped PAT, say so in the step 11 report rather than presenting the usage check as exhaustive.
@@ -413,7 +421,7 @@ Remind the user that archiving is reversible (`archived: false`) and that experi
 - `GET /api/v1/fact-metrics` — verify what landed
 - `GET /api/v1/fact-tables` — detect id collisions before import
 - `GET /api/v1/data-sources` — validate `userIdTypes` and rule out Mixpanel / Google Analytics
-- `GET /api/v1/metric-groups` — find groups containing migrated legacy metrics
+- `GET /api/v1/metric-groups` — find groups containing migrated legacy metrics (unpaginated; no query parameters)
 - `PUT /api/v1/metric-groups/:id` — swap migrated ids into the group's `metrics`
 - `GET /api/v1/experiment-templates` — list templates (`projectId` only; no pagination)
 - `PUT /api/v1/experiment-templates/:id` — partial patch to swap metric ids in a template
@@ -422,6 +430,6 @@ Remind the user that archiving is reversible (`archived: false`) and that experi
 ## Handoffs
 
 - `references/metric-search.md` — to inventory or audit the metric catalog before migrating, or to confirm the result afterward
-- `references/analytics-explore.md` — to chart a newly created fact metric and sanity-check it against the legacy numbers
+- `references/analytics-explore.md` — to chart a newly created non-funnel fact metric and sanity-check it against the legacy numbers; saved funnel metrics need the dedicated funnel exploration path in the GrowthBook UI
 - the **experiments** skill (`experiment-analyze` workflow) — when running experiments are blocking archival and the user wants to know how close they are to stopping
 - the **experiments** skill (`experiment-design` workflow) — to start using the new fact metrics as goal or guardrail metrics

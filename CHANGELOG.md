@@ -18,9 +18,9 @@ Denominator handling follows the semantics change deliberately rather than paper
 
 - `GET /api/v1/metrics` includes archived metrics unless `includeArchived=false` is passed.
 - `POST /api/v1/bulk-import/facts` defaults `managedBy` to `"api"`, which disables UI editing — send `defaultManagedBy: ""`.
-- A `200` from a dry run is not success: it collects every failing resource, so branch on `success` and `errors[]`.
+- A `200` from a dry run is not success: it collects non-permission validation failures, so branch on `success` and `errors[]`; permission failures short-circuit with `403`.
 - A live bulk import is not transactional — it stops at the first failure and returns `400` (`403` for permissions) with the write counts and `errors[]`. Deterministic ids make a corrected re-run an upsert.
-- `proportion`/`retention`/`funnel` metrics have `numerator.column` silently overwritten with `$$distinctUsers` (`dailyParticipation` with `$$distinctDates`) and `aggregation` cleared — no error, so a wrong column yields a quietly different metric.
+- `proportion`/`retention` metrics have `numerator.column` silently overwritten with `$$distinctUsers` (`dailyParticipation` with `$$distinctDates`) and `aggregation` cleared — no error, so a wrong column yields a quietly different metric. Funnel metrics have no numerator.
 - Ratio metrics support only `percentile` capping, but that rule lives only in the UI — the API accepts `absolute` without complaint.
 - Legacy metrics with `managedBy: "config"` cannot be archived. They still migrate; the original is retired in `config.yml`.
 - Experiment templates are by-value, so swapping their metric ids is forward-only; `PUT /api/v1/experiment-templates/:id` is the true partial, while the bulk endpoint takes full create bodies.
