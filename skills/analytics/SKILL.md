@@ -6,7 +6,7 @@ allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *), Bash(sleep *)
 
 # analytics
 
-Domain router for GrowthBook Product Analytics and the metric catalog. The workflows live in `references/`. Read this router, pick one, then read that file and follow it.
+Domain router for GrowthBook Product Analytics and the metric catalog. Both workflows live in `references/`. Read this router, pick one, then read that file and follow it.
 
 Analytics uses the **v1 API** — `/api/v1/product-analytics/*-exploration` for charts, `/fact-metrics` and `/fact-tables` for the catalog.
 
@@ -35,7 +35,6 @@ When the user wants to *change* the catalog rather than read it — moving legac
 - **Restyling a chart is free.** Cache matching ignores `chartType`, so a different chart type on the same query is a cache hit. Never re-query just to restyle.
 - **`GET /api/v1/metrics` includes archived metrics by default.** Pass `includeArchived=false` whenever you list legacy metrics to work with.
 - **Bulk import defaults `managedBy` to `"api"`, which disables UI editing.** `POST /api/v1/bulk-import/facts` applies it to any fact table or fact metric that omits the field. Send `defaultManagedBy: ""` at the top level unless the user genuinely wants API-only resources.
-- **Metric migration needs newer server support than v5.0.1.** Halt on an older self-hosted version rather than importing without the bulk validation and `replaces` behavior the workflow relies on.
 
 ## Read-only vs. write
 

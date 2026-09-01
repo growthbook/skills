@@ -24,7 +24,7 @@ gb-call GET '/api/v1/fact-tables?limit=100'
 
 Both paginate with `limit`/`offset` (loop while `hasMore` is true) and accept `datasourceId` and `projectId` filters; `/fact-metrics` also accepts `factTableId`. Scope to a datasource when the user is heading toward charting — explorations are datasource-scoped.
 
-Present standard metrics grouped by `numerator.factTableId`. Funnel metrics have no numerator; group them separately and show the fact tables referenced by `funnelSettings.steps[]`. Include each metric's `metricType` and a one-line description. Flag `managedBy: "admin"` entries as **official** — vetted definitions the org manages centrally; prefer them when several similar metrics exist.
+Present the inventory grouped by fact table (metrics hang off their `numerator.factTableId`), with each metric's `metricType` and a one-line description. Flag `managedBy: "admin"` entries as **official** — vetted definitions the org manages centrally; prefer them when several similar metrics exist.
 
 For completeness on older orgs, legacy metrics live at:
 
@@ -47,7 +47,7 @@ gb-call GET /api/v1/fact-metrics/fact__abc123
 gb-call GET /api/v1/fact-tables/ftb_abc123
 ```
 
-Surface for a metric: `metricType` (`mean`, `proportion`, `retention`, `dailyParticipation`, `ratio`, `quantile`, or `funnel`), `numerator` (fact table, column, aggregation, row filters), `denominator` (ratio metrics), `funnelSettings.steps` (funnel metrics), `inverse`, and window/capping settings when they change interpretation. For a fact table: `userIdTypes`, `sql`, and `columns[]` — each column has `column`, `datatype`, `deleted`, and for string columns `topValues` (the observed values, refreshed by a background job).
+Surface for a metric: `metricType` (`mean`, `proportion`, `retention`, `dailyParticipation`, `ratio`, `quantile`), `numerator` (fact table, column, aggregation, row filters), `denominator` (ratio metrics), `inverse`, and window/capping settings when they change interpretation. For a fact table: `userIdTypes`, `sql`, and `columns[]` — each column has `column`, `datatype`, `deleted`, and for string columns `topValues` (the observed values, refreshed by a background job).
 
 ### Path C — Chartability triage ("what can I chart?", pre-analytics audit)
 
@@ -55,7 +55,7 @@ Answer three questions per candidate:
 
 1. **Is it a fact metric?** Only `fact__...` IDs chart in Product Analytics. Legacy `met_...` metrics don't.
 2. **Is its datasource a SQL warehouse?** Cross-check `datasource` against `GET /api/v1/data-sources` — Mixpanel and Google Analytics datasources can't run explorations.
-3. **Does the exploration workflow support the type?** On one metric chart, ratio metrics cannot mix with non-ratio metrics, and quantile metrics cannot mix with anything. Saved funnel metrics require the dedicated funnel exploration path, which `references/analytics-explore.md` does not yet implement; direct the user to the GrowthBook UI for those.
+3. **Does mixing work?** On one chart, ratio metrics can't mix with non-ratio metrics, and quantile metrics can't mix with anything. All other types mix freely.
 
 Report the chartable set and hand off to `references/analytics-explore.md` to actually run one.
 
