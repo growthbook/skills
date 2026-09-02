@@ -28,6 +28,7 @@ Automatic invocation is unaffected — describe the task and the right domain sk
 - Clarified bandit scope: the GrowthBook REST API supports multi-armed bandit experiments and separate Enterprise beta Contextual Bandits, but the current experiment workflows operate standard A/B tests only and halt on either bandit type.
 
 ### Added
+- `experiment-visual-editor` — create a Visual Editor experiment on a live page from a plain-language description of the change ("shorter headline", "green CTA", "free-shipping banner"), including AI-generated imagery. Prompts go to `POST /api/v1/visual-editor/ai/edit` with `persist: true` — the same endpoint behind the Chrome extension's prompt box — so the workflow inherits its selector grounding, self-correct retry, page-root `innerHTML` guard, and insert-to-JS compilation instead of reimplementing any of it. Leaves a draft with no metrics and hands off to `experiment-launch`. Documents the gotchas the API won't surface on its own: these routes need a Personal Access Token where an org Secret Key works everywhere else, and the changes render on the live site only when the SDK connection has `Include Visual Experiments` enabled.
 - `metric-create` — create a fact metric, and the fact table underneath it when one does not exist yet. Covers all seven metric types (`proportion`, `retention`, `mean`, `quantile`, `ratio`, `dailyParticipation`, and `funnel`), row filters, and quantile/funnel settings. Stops at the metric definition; analysis settings inherit organization defaults.
 
 ### Changed
