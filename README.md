@@ -43,6 +43,7 @@ The full flag lifecycle. Flag changes go through a draft revision before going l
 | `experiment-launch` | End-to-end launch: create the experiment, prep or reuse the feature flag, wire the experiment-ref rule, and call `/start`. Handles approval and pre-launch checklist failure paths. |
 | `experiment-analyze` | Trigger a fresh snapshot, poll until ready, then interpret results (SRM check, lifts, CIs, guardrails). |
 | `experiment-stop` | Stop a running experiment, optionally declaring a winner and enabling a temporary rollout. Full post-stop flag disposition guidance. |
+| `experiment-visual-editor` | Build an A/B test on a live page from a plain-language description of the change — headline, CTA, banner, imagery — via GrowthBook's visual-editor AI. Leaves a draft for `experiment-launch` to start. |
 
 ### `analytics`
 
@@ -117,6 +118,7 @@ You don't invoke workflows directly — the domain skill picks one from your req
 - **Experiment-first:** `experiment-design` → `experiment-launch` → `experiment-analyze` → `experiment-stop` → `flag-cleanup`
 - **Flag-first:** `flag-create` → `flag-toggle` → `flag-targeting` → `flag-ramp` / `flag-monitoring` → `flag-cleanup`
 - **Experiment on an existing flag:** `flag-experiment` → `experiment-launch` (reuses the existing flag) → `experiment-stop` → `flag-cleanup`
+- **Visual test on a live page:** `experiment-visual-editor` (creates the draft and writes the changes) → `experiment-launch` (metrics and `/start`) → `experiment-analyze` → `experiment-stop`
 - **Analytics:** `metric-search` → `analytics-explore` → `experiment-design` (when a chart surfaces something worth testing)
 - **Metric setup:** `metric-search` (does it exist?) → `metric-create` → `analytics-explore` (sanity-check the numbers) → `experiment-design`
 
@@ -170,6 +172,7 @@ skills/
     references/
       experiment-brainstorm.md  experiment-design.md  experiment-launch.md
       experiment-analyze.md     experiment-stop.md
+      experiment-visual-editor.md
   analytics/
     SKILL.md
     references/

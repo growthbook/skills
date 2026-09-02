@@ -1,6 +1,6 @@
 ---
 name: experiments
-description: Design, launch, analyze, and stop standard GrowthBook A/B tests. Use when the user mentions an experiment, A/B test, split test, variation, hypothesis, sample size, goal or guardrail metric, SRM, chance to win, lift, or declaring a winner. Also use for multi-armed or contextual bandit requests, but only to identify them and direct the user to GrowthBook UI — these workflows do not operate bandits. For feature-flag work — creating flags, targeting rules, rollouts, kill switches, or publishing drafts — use feature-flags. For charting product data or browsing metrics, use analytics. For first-time API key configuration, use gb-setup.
+description: Design, launch, analyze, and stop standard GrowthBook A/B tests. Use when the user mentions an experiment, A/B test, split test, variation, hypothesis, sample size, goal or guardrail metric, SRM, chance to win, lift, or declaring a winner. Also use to build Visual Editor experiments on a live web page from a description of the change — "A/B test this page", "test a shorter headline", "try a green CTA", "add a banner", "visual experiment" — including AI-generated images. Also use for multi-armed or contextual bandit requests, but only to identify them and direct the user to GrowthBook UI — these workflows do not operate bandits. For feature-flag work — creating flags, targeting rules, rollouts, kill switches, or publishing drafts — use feature-flags. For charting product data or browsing metrics, use analytics. For first-time API key configuration, use gb-setup.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *), Bash(sleep *)
 ---
 
@@ -25,8 +25,11 @@ These workflows target `type: "standard"` experiments. GrowthBook's REST API als
 | `references/experiment-launch.md` | Create the experiment, prep or reuse the flag, wire the experiment-ref rule, and start it |
 | `references/experiment-analyze.md` | Read results — refresh the snapshot if stale, then interpret (read-only) |
 | `references/experiment-stop.md` | Stop a running experiment, optionally declare a winner and roll it out |
+| `references/experiment-visual-editor.md` | Build a test on a live page from a description of the change — no code, no flag |
 
 If the user has an idea but no hypothesis, start at `experiment-design`; it routes back to `experiment-brainstorm` when the idea needs grounding. If they hand you a name rather than an ID, `experiment-analyze` and `experiment-stop` both open with a resolve-by-name step.
+
+`experiment-visual-editor` cuts across the lifecycle rather than sitting in it: it replaces `experiment-launch`'s create-and-wire-a-flag steps for tests that change the page rather than the code, then hands back to `experiment-launch` for metrics and `/start`. Pick it when the user names a **URL** and a visible change; pick `experiment-launch` when the variation is a code path behind a feature flag.
 
 ## Methodology authority
 
@@ -44,10 +47,13 @@ This router deliberately carries no statistical guidance of its own. Interpretat
 - **`result` is the recorded result and survives a restart,** so `result=won` can return a running experiment. Pair it with `status=stopped`.
 - **`limit` caps at 100** on the experiments list.
 - **Show users the experiment name and link `<host>/experiment/<id>`,** not raw ids alone.
+- **Visual-editor endpoints require a Personal Access Token.** `/api/v1/visual-editor/*` rejects org-level Secret Keys, which work fine for every other workflow here. A `secret_`-prefixed `GB_API_KEY` needs swapping for a `gb_pat_` one via **gb-setup**.
 
 ## Read-only vs. write
 
-`experiment-brainstorm`, `experiment-design`, and `experiment-analyze` never write — brainstorm and design are proposal-only and must not POST an experiment into existence, and analyze must not stop or modify one. `experiment-launch` and `experiment-stop` are the only writers.
+`experiment-brainstorm`, `experiment-design`, and `experiment-analyze` never write — brainstorm and design are proposal-only and must not POST an experiment into existence, and analyze must not stop or modify one. `experiment-launch`, `experiment-stop`, and `experiment-visual-editor` are the only writers.
+
+`experiment-visual-editor` creates and edits, but never starts: it leaves a draft with no metrics, and starting it is `experiment-launch`'s job. Keep that boundary — a visual experiment that starts before anyone has previewed the variation ships an unreviewed change to real traffic.
 
 ## Budget
 
