@@ -80,5 +80,6 @@ Report the chartable set and hand off to `references/analytics-explore.md` to ac
 ## Handoffs
 
 - `references/analytics-explore.md` — to chart a metric or fact table found here
+- the **ask-data** skill — when no metric or fact table covers the question and the user needs direct SQL against the warehouse
 - the **experiments** skill (`experiment-design` workflow) — to pick goal/guardrail metrics for a new experiment
 - the **experiments** skill (`experiment-analyze` workflow) — when the user's question is about an experiment's metric results, not the metric catalog

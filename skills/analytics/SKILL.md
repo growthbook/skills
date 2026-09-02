@@ -1,6 +1,6 @@
 ---
 name: analytics
-description: Chart GrowthBook product data and browse the metric catalog — run a Product Analytics exploration over a fact metric, fact table, or raw warehouse table, and search metrics and fact tables. Use when the user asks "show me signups by country", "chart daily active users", "how many orders last week", "plot revenue over time", "break that down by plan", "what metrics do we have", "find our revenue metric", "what fact tables exist", "which metrics are official", "what columns does the orders fact table have", or any "show me / chart / plot / how many" question about product data. For an A/B test's results, use the experiments skill — this skill is general analytics, not experiment readouts. For feature flags, use the feature-flags skill. For first-time API key configuration, use gb-setup.
+description: Chart GrowthBook product data, browse the metric catalog, or query the warehouse directly — run a Product Analytics exploration over a fact metric, fact table, or raw warehouse table, search metrics and fact tables, or fall back to ad-hoc SQL. Use when the user asks "show me signups by country", "chart daily active users", "how many orders last week", "plot revenue over time", "break that down by plan", "what metrics do we have", "find our revenue metric", "what fact tables exist", "which metrics are official", "what columns does the orders fact table have", "what tables contain user data", "run a SQL query", or any "show me / chart / plot / how many" question about product data. For an A/B test's results, use the experiments skill — this skill is general analytics, not experiment readouts. For feature flags, use the feature-flags skill. For first-time API key configuration, use gb-setup.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *), Bash(sleep *)
 ---
 
@@ -18,8 +18,9 @@ All API calls go through the bundled helper. Under the Claude Code plugin instal
 | --- | --- |
 | `references/metric-search.md` | Browse, find, or audit metrics and fact tables — inventory, a specific definition, or "what can I chart" triage (read-only) |
 | `references/analytics-explore.md` | Actually run a chart and report the numbers plus a deep link |
+| `references/sql-query.md` | Run ad-hoc SQL against the warehouse when no metric or exploration can answer the question (last resort) |
 
-When the user names a metric you haven't resolved yet, read `metric-search.md` first — it's the discovery front door and hands `analytics-explore` a stable `fact__...` id. When they've already named something concrete and just want the numbers, go straight to `analytics-explore.md`.
+When the user names a metric you haven't resolved yet, read `metric-search.md` first — it's the discovery front door and hands `analytics-explore` a stable `fact__...` id. When they've already named something concrete and just want the numbers, go straight to `analytics-explore.md`. Use `sql-query.md` only when the question can't be answered with existing metrics or the exploration config — custom joins, unmodeled tables, or aggregations the exploration can't express.
 
 ## Shared conventions
 
@@ -39,6 +40,7 @@ Note that explorations execute real warehouse queries, so they cost the user mon
 
 ## Handoffs
 
+- The **ask-data** skill — when no metric or exploration can answer the question and the user needs direct SQL against the warehouse (custom joins, unmodeled tables, complex aggregations). Try `metric-search` and `analytics-explore` first.
 - The **experiments** skill — when the question is an A/B test readout, or when a chart surfaces something worth testing.
 - The **feature-flags** skill — when the user pivots to shipping or gating the thing the data is about.
 - **gb-setup** — when `gb-call` reports a missing or invalid `GB_API_KEY`.
