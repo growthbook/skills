@@ -8,7 +8,7 @@ The skills call the [GrowthBook REST API](https://docs.growthbook.io/api) direct
 
 ## What's included
 
-Four skills, one per domain. Each one is a router: it loads a short index, then reads only the workflow that matches what you asked for. The 25 workflows live as reference files inside their skill and stay out of context until they're needed.
+Four skills, one per domain. Each one is a router: it loads a short index, then reads only the workflow that matches what you asked for. The 27 workflows live as reference files inside their skill and stay out of context until they're needed.
 
 ### `feature-flags`
 
@@ -46,13 +46,15 @@ The full flag lifecycle. Flag changes go through a draft revision before going l
 
 ### `analytics`
 
-Turn the metrics and fact tables you already use for experimentation into ad-hoc charts with GrowthBook's [Product Analytics](https://docs.growthbook.io/app/product-analytics) Explorer.
+Turn the metrics and fact tables you already use for experimentation into ad-hoc charts and saved dashboards with GrowthBook's [Product Analytics](https://docs.growthbook.io/app/product-analytics) Explorer.
 
 | Workflow | What it does |
 | --- | --- |
 | `metric-search` | Search, list, and audit fact metrics and fact tables — definitions, columns, and what's chartable. Read-only. |
 | `metric-create` | Create a fact metric, and the fact table underneath it when one doesn't exist yet. Covers all seven metric types; analysis settings inherit the org defaults. |
 | `analytics-explore` | Build and run a chart: a metric over time, a fact-table aggregation, or a raw warehouse table. Returns the numbers plus a deep link to the rendered chart. |
+| `dashboard-create` | Build a dashboard from a goal or a set of metrics. Chart blocks carry a config and the create call runs every one of them, so it's one write for the whole page. |
+| `dashboard-edit` | Change a dashboard that exists: add or remove a chart, swap a metric, change the timeframe, rename or re-scope it. Reads the dashboard, then writes the full block list back. |
 
 ### `gb-setup`
 
@@ -119,11 +121,13 @@ You don't invoke workflows directly — the domain skill picks one from your req
 - **Experiment on an existing flag:** `flag-experiment` → `experiment-launch` (reuses the existing flag) → `experiment-stop` → `flag-cleanup`
 - **Analytics:** `metric-search` → `analytics-explore` → `experiment-design` (when a chart surfaces something worth testing)
 - **Metric setup:** `metric-search` (does it exist?) → `metric-create` → `analytics-explore` (sanity-check the numbers) → `experiment-design`
+- **Dashboards:** `metric-search` → `analytics-explore` (check one chart reads right) → `dashboard-create` → `dashboard-edit` (as the questions change)
 
 ## What these skills do not do
 
 - **No datasource creation.** Connect datasources in the GrowthBook UI and reference them by ID; `metric-create` covers fact tables and fact metrics, but not the warehouse connection underneath them.
 - **No metric analysis tuning.** `metric-create` defines what a metric measures; conversion windows, capping, priors, and risk thresholds inherit the org defaults and are tuned in the GrowthBook UI.
+- **No experiment dashboards.** `dashboard-create` and `dashboard-edit` cover general Analytics dashboards. A dashboard attached to an experiment is edited on that experiment's page, and the per-experiment result blocks only render there.
 - **No SDK code generation.** Follow GrowthBook's SDK docs; these skills manage flags and experiments via the REST API, not the SDK.
 - **No bandit workflows yet.** GrowthBook's REST API supports multi-armed bandit experiments and separate Enterprise beta Contextual Bandits, but these skills currently target standard A/B tests. They identify either bandit type and halt rather than apply fixed-allocation experiment guidance to an adaptive experiment.
 - **No silent retries or rate-limit backoff in the helper.** GrowthBook is rate-limited at 60 rpm. The skills that fan out cap their call counts; multi-tenant orgs hitting concurrent requests may still see `429`s, which `gb-call` surfaces explicitly rather than retrying.
@@ -174,6 +178,7 @@ skills/
     SKILL.md
     references/
       metric-search.md  metric-create.md  analytics-explore.md
+      dashboard-create.md  dashboard-edit.md
   gb-setup/
     SKILL.md                           # one-time onboarding; no references/
 
