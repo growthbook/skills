@@ -47,7 +47,6 @@ This router deliberately carries no statistical guidance of its own. Interpretat
 - **`result` is the recorded result and survives a restart,** so `result=won` can return a running experiment. Pair it with `status=stopped`.
 - **`limit` caps at 100** on the experiments list.
 - **Show users the experiment name and link `<host>/experiment/<id>`,** not raw ids alone.
-- **Visual-editor endpoints require a Personal Access Token.** `/api/v1/visual-editor/*` rejects org-level Secret Keys, which work fine for every other workflow here. A `secret_`-prefixed `GB_API_KEY` needs swapping for a `gb_pat_` one via **gb-setup**.
 
 ## Read-only vs. write
 
