@@ -55,9 +55,6 @@ Returns `projects` (`{id, name}`), `hashAttributes` (`{property, description?}` 
 - **Pick the hash attribute.** If there's exactly one, use it and say which. If several, ask — it decides how visitors are bucketed.
 - **Check `recentExperiments` for the same `primaryUrl`.** If one already targets this page, surface it before creating a second: overlapping visual experiments on one URL interfere with each other.
 
-A **401** means the key is missing or invalid — route to **gb-setup**. A **400** whose message mentions a Personal Access Token means the key is a valid org Secret Key, which these endpoints reject on purpose — also **gb-setup**, to swap it for a `gb_pat_` one.
-
-This call does not touch AI, so it succeeding does not mean step 4 will — the AI configuration checks happen at the prompt itself.
 
 ### 2. Create the experiment
 
@@ -160,6 +157,8 @@ Leave Control alone. It is the unmodified page, and that's the point.
 
 **Image prompts need nothing extra.** "Replace the hero image with a photo of a team collaborating" is handled inside this one call — generated, stored permanently, and referenced in the saved change.
 
+**Asking for alternatives doesn't work here, by design.** With `persist` there is no chooser to pick from, so the endpoint returns one best answer rather than paying to generate options it would throw away. "Give me three headlines" gets you one — re-prompt for a different take instead.
+
 **To refine**, send another prompt with the same `variationId`. Mutations accumulate; `css` and `js` are rewritten in full each time. Pass the exchanges so far as `conversationHistory` (max 12 turns, `{"role": "user"|"assistant", "text": "..."}`) so "make the green less neon" resolves against the previous turn.
 
 **For a third variation**, `POST /api/v1/visual-editor/add-variant` with `{"visualChangesetId": "<id>"}`, then prompt against the `newVariationId` it returns.
@@ -184,19 +183,16 @@ Then hand off to `references/experiment-launch.md` to attach goal and guardrail 
 
 ## Guardrails
 
-- **The API key must be a Personal Access Token.** Every `/api/v1/visual-editor/*` endpoint rejects org-level Secret Keys, because visual edits are attributed to a real user for the audit log and per-user permissions. A `secret_`-prefixed `GB_API_KEY` works everywhere else in this domain and fails here with a message naming PATs. Route the user to **gb-setup** to swap in a `gb_pat_` key.
-- **The AI failure modes are configuration, not plan, and the messages name which.** `AI is not enabled for this organization. Visit Settings → AI Settings to enable it.` means an admin hasn't turned AI on. `No <provider> API key is configured. Add one under Settings → AI & Prompts…` means it's on but has no key for the model it wants to use. Both are admin fixes in GrowthBook; neither is anything this workflow can work around.
-- **These endpoints do not check the Visual Editor entitlement.** The Visual Editor is a paid feature and the GrowthBook UI gates it, but the only plan check on any `/api/v1/visual-editor/*` route is for multi-armed bandits. So a call can succeed and create an experiment the org can't then open in the app. If the user's plan doesn't include the Visual Editor, say so rather than leaving them a draft they can't edit.
+- **These endpoints need a Personal Access Token.** An org Secret Key works everywhere else in this domain and is rejected here. On that error, route to **gb-setup** to swap in a `gb_pat_` key rather than treating it as a permissions problem.
 - **Only draft experiments accept visual changes.** `persist` checks this before generating, so a running or archived experiment fails fast rather than burning AI quota. To edit a running test, the user sets it back to draft in GrowthBook.
 - **`variationId` is the `var_…` string** from `experiment.variations[].variationId` — not the visual change id, not the key `"1"`, not an index. Anything else returns `variationId does not belong to the given changeset`.
 - **Never write `""` to `css` or `js` to clear them.** The endpoint omits those fields when unchanged, and treats a falsy value as "no change" rather than "wipe" — deliberately, so a prompt can't destroy a stylesheet. Clearing global CSS/JS is a manual edit in the GrowthBook UI.
 - **`insert` in the response is a preview, not a to-do.** New elements are already compiled into the variation's `js` server-side, as scoped idempotent snippets. Applying them again double-inserts.
-- **Multi-option answers are not stored.** "Give me three headlines" returns an `options` array, but only `value` (its top pick, and also `options[0]`) is saved — `options` exists for the extension's chooser UI and is dropped on write. Show the alternatives as text and re-prompt if the user prefers one; don't tell them the alternatives are saved.
 - **"Title" means the visible `<h1>`**, not the browser tab. If the user wants `document.title`, say "browser tab title" in the prompt explicitly.
 - **Adding new elements produces global JS, which a strict CSP can block.** A site with a `script-src` policy needs `'unsafe-inline'` and `'unsafe-eval'`, or a nonce. Copy and style changes are unaffected — mention this only for insert-style prompts.
 - **Heavily client-rendered pages are a poor fit.** A framework re-render can overwrite DOM mutations after hydration. For a React/Vue app, a feature-flagged code change is usually the better tool — say so rather than shipping a flickery test.
 - **These endpoints are internal.** `/api/v1/visual-editor/*` is the private contract between the back end and the Chrome extension: it is excluded from the OpenAPI spec and carries no deprecation guarantees. If a call starts failing with a schema error, re-verify against `packages/back-end/src/api/visual-editor-ai/` in the GrowthBook repo. The `/api/v1/visual-changesets/*` endpoints used for verification are public and stable.
-- **Budget.** 60 requests/minute per key. `prompt` caps at 8000 characters and the whole body at 2 MB — the catalog is what gets near that, so keep it trimmed. Image generation is capped at 3 per prompt. GrowthBook Cloud also enforces a daily AI cap, surfacing as `Daily AI usage limit reached.`
+- **Budget.** 60 requests/minute per key. `prompt` caps at 8000 characters and the whole body at 2 MB — the catalog is what gets near that, so keep it trimmed. Image generation is capped at 3 per prompt. GrowthBook Cloud also enforces a daily AI cap.
 
 ## Endpoints used
 
