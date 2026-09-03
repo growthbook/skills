@@ -40,7 +40,7 @@ gb-call GET /api/v1/data-sources
 
 Mixpanel and Google Analytics cannot run explorations. Drop them from the list first, then count what is left:
 
-- **0** → tell the user no chartable datasource is configured and stop. Say so plainly; do not fall back to one that cannot chart.
+- **0** → tell the user no chartable datasource is configured, and stop there.
 - **1** → use it and say which one.
 - **2+** → use the one the user named; otherwise ask.
 
@@ -86,13 +86,13 @@ gb-call GET /api/v1/fact-tables/<factTableId>
 
 ### 5. Look up columns and values
 
-Only when the dashboard needs a breakdown or a row filter. `columns[]` on the fact table gives the column names and datatypes; `topValues` on a string column is the only value lookup the API offers. Never guess a filter value — if it is not in `topValues`, ask the user or fall back to a `contains` filter, and say which you did.
+Only when the dashboard needs a breakdown or a row filter. `columns[]` on the fact table gives the column names and datatypes; `topValues` on a string column is the only value lookup the API offers. Take every filter value from `topValues`. When the one you need is absent, ask the user or fall back to a `contains` filter, and say which you did.
 
 ### 6. Build the blocks
 
 Every block needs `type`, `title`, and `description` (`""` is fine for the description, but always give a chart a real title — it is the tile's heading). Chart blocks add `config`. See **Block reference** below, and **Layout** for `layout`.
 
-Add exactly one `markdown` block, first in the list, as the legend: one opening line on what the dashboard is for, then one line per chart saying what to read from it. Never add a second — a chart's own `title` is how it labels itself.
+Add exactly one `markdown` block, first in the list, as the legend: one opening line on what the dashboard is for, then one line per chart saying what to read from it. That one covers the whole page — each chart labels itself through its own `title`.
 
 ### 7. Create the dashboard
 
@@ -228,7 +228,7 @@ Three KPI tiles then a full-width chart:
 ]
 ```
 
-Minimum widths are enforced when the user drags a tile, so a narrower `w` snaps wider on first touch: never go below 8 for a chart or markdown block, or below 12 for `metric-experiments` and `experiments-scaled-impact`.
+Minimum widths are enforced when the user drags a tile, so a narrower `w` snaps wider on first touch: keep `w` at 8 or more for a chart or markdown block, and 12 or more for `metric-experiments` and `experiments-scaled-impact`.
 
 The user can rearrange the grid on the dashboard itself, so aim for a sensible default rather than a perfect one.
 
@@ -250,7 +250,7 @@ The name and the project have no default. Ask for both in one question, then **a
 | Share and edit level | `"private"` | never |
 | Auto-updates | `false` | never |
 
-Never ask a question whose answer would not change a block. Build something reasonable and state your assumptions instead.
+Ask only where the answer changes a block. Everywhere else, build something reasonable and state the assumption you made.
 
 ## Guardrails
 

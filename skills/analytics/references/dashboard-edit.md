@@ -86,7 +86,7 @@ Every field on an update is optional, and leaving one out keeps the saved value.
 
 The exception is `blocks`. Send it and it replaces the list; omit it and every tile is left alone. There is no way to add or remove a single tile.
 
-Changing `globalControls.dateRange` re-runs every chart enrolled in it, against the new range. A dashboard with many tiles is many warehouse queries, so avoid touching the date range as an incidental part of some other change.
+Changing `globalControls.dateRange` re-runs every chart enrolled in it, against the new range. A dashboard with many tiles is many warehouse queries, so change the date range only when that is what the user asked for.
 
 ## Guardrails
 
@@ -96,7 +96,7 @@ Changing `globalControls.dateRange` re-runs every chart enrolled in it, against 
 - **Drop `explorerAnalysisId` only when you changed that chart's `config`.** Dropping it otherwise re-runs a query for nothing; keeping it after a config change shows numbers that do not match the tile.
 - **Confirm before the PUT.** Name the tiles being removed explicitly — that is the change a user is most likely to have meant differently.
 - **A chart that cannot run fails the whole update.** Nothing is written, and the error names the block. Fix that config and call again.
-- **Do not change `experimentId`.** It is rejected on update, and a general dashboard has none.
+- **Leave `experimentId` out of the update.** It is rejected there, and a general dashboard has none.
 - **Renaming a tile is not renaming the dashboard.** A block's `title` is the tile heading; the dashboard's `title` is the page name.
 
 ## Endpoints used
