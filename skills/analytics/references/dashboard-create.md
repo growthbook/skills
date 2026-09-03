@@ -32,17 +32,17 @@ It deliberately stops at creation. Renaming, re-scoping, and adding or removing 
 
 ### 1. Pick the datasource
 
-Every chart on the dashboard is scoped to one SQL datasource. If one is already established in this conversation, reuse it.
+Each chart carries its own `config.datasource`, so one dashboard can span several. Default to a single one — tiles that share a source read as one story — and only reach for a second when the user asks for metrics that live there. If a datasource is already established in this conversation, reuse it.
 
 ```bash
 gb-call GET /api/v1/data-sources
 ```
 
-- **0** → tell the user none is configured and stop.
+Mixpanel and Google Analytics cannot run explorations. Drop them from the list first, then count what is left:
+
+- **0** → tell the user no chartable datasource is configured and stop. Say so plainly; do not fall back to one that cannot chart.
 - **1** → use it and say which one.
 - **2+** → use the one the user named; otherwise ask.
-
-Mixpanel and Google Analytics datasources cannot run explorations, so filter them out.
 
 ### 2. Settle the name and the project
 
@@ -75,6 +75,8 @@ Use `metric-search` if the user's metrics are not resolved yet, or list directly
 ```bash
 gb-call GET '/api/v1/fact-metrics?datasourceId=<ds_id>&limit=100'
 ```
+
+Once per datasource the dashboard uses.
 
 Only fact metrics (`fact__...`) are chartable. Capture `id`, `metricType`, and `numerator.factTableId` for each, then fetch the fact table for its `userIdTypes`:
 
@@ -256,7 +258,7 @@ Never ask a question whose answer would not change a block. Build something reas
 - **Confirm before the POST.** A dashboard is organization-visible configuration. Show the payload, or a plain summary of it, and get a yes.
 - **`explorerAnalysisId` is the server's to fill.** Omit it on every chart block you have not run yourself.
 - **A chart that cannot run fails the whole create.** The dashboard is not created, and the error names what went wrong. Fix that block's config and call again — there is no partial dashboard to clean up.
-- **Everything must live on one datasource.** Every metric in a chart's `values[]`, every fact table, and every raw table must belong to that chart's `config.datasource`, or the run fails.
+- **One datasource per chart.** Every metric in a chart's `values[]`, every fact table, and every raw table must belong to that chart's own `config.datasource`, or the run fails. Different tiles may use different ones.
 - **Always set `unit` explicitly** on a metric exploration value: `userIdTypes[0]` for `mean`, `proportion`, `retention`, and `dailyParticipation`; `null` for `ratio` and `quantile`. A missing unit is not backfilled — it silently switches to event-level aggregation.
 - **`last14Days` is not a valid date range.** Only `today`, `yesterday`, `last7Days`, `last30Days`, `last90Days`, `last12Months`, `lastCalendarYear`, `customLookback`, and `customDateRange`. Anything else goes through `customLookback`.
 - **One legend, and only on a new dashboard.** Exactly one `markdown` block, first. No section headings, no per-group captions.
