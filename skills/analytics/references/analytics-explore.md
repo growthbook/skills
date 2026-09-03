@@ -5,7 +5,7 @@ description: Build and run a GrowthBook Product Analytics chart via the REST API
 
 # analytics-explore
 
-Build and run a Product Analytics exploration — GrowthBook's ad-hoc charting surface — and report the numbers with a deep link to the rendered chart. Three dataset types are supported: an existing fact metric, a fact table aggregation, or a raw warehouse table. This skill runs warehouse queries but never changes GrowthBook configuration; it does not create metrics, fact tables, or dashboards.
+Build and run a Product Analytics exploration — GrowthBook's ad-hoc charting surface — and report the numbers with a deep link to the rendered chart. Four dataset types are supported: an existing fact metric, a fact table aggregation, a raw warehouse table, or a funnel. This skill runs warehouse queries but never changes GrowthBook configuration; it does not create metrics, fact tables, or dashboards.
 
 ## Contents
 
@@ -15,6 +15,7 @@ Build and run a Product Analytics exploration — GrowthBook's ad-hoc charting s
   - Path A — metric exploration
   - Path B — fact-table exploration
   - Path C — data-source exploration (raw table)
+  - Path D — funnel exploration
   - 3. Interpret the response
   - 4. Follow-up modifications
 - Config rules
@@ -40,31 +41,41 @@ Only SQL warehouse datasources work (Postgres, BigQuery, Snowflake, etc.). Mixpa
 
 ### 2. Pick the path
 
-| The user wants | Path |
-| --- | --- |
-| A defined metric ("signup conversion", "revenue") | **A — metric exploration** |
-| Event counts/sums from a fact table ("pageviews", "orders by country") | **B — fact-table exploration** |
-| A warehouse table with no fact table defined on it | **C — data-source exploration** |
+| The user wants                                                                  | Path                            |
+| ------------------------------------------------------------------------------- | ------------------------------- |
+| A defined metric ("signup conversion", "revenue")                               | **A — metric exploration**      |
+| Event counts/sums from a fact table ("pageviews", "orders by country")          | **B — fact-table exploration**  |
+| A warehouse table with no fact table defined on it                              | **C — data-source exploration** |
+| Ordered completion through fact-table events ("signup → activation → purchase") | **D — funnel exploration**      |
 
-Prefer A over B when a fact metric exists — metrics carry curated logic (filters, aggregation, capping) that a raw fact-table aggregation won't reproduce. Use C only when no fact table covers the data.
+Prefer A over B when a fact metric exists — metrics carry curated logic that a raw fact-table aggregation will not reproduce. Use C only when no fact table covers the data. Before any path, remember the per-turn query budget: discovery and polling are allowed, but stop after the first successful exploration and answer from that chart.
 
 ### Path A — metric exploration
 
-**A-1. Find the metric.** There is no search endpoint; list and filter client-side by name:
+**A-1. Find the metric.** Use Product Analytics search with a short term; broaden it or try a synonym if needed:
 
 ```bash
-gb-call GET '/api/v1/fact-metrics?datasourceId=<ds_id>&limit=100'
+gb-call GET '/api/v1/product-analytics/search?query=signup&datasourceId=<ds_id>&limit=20&skip=0'
 ```
 
-Paginate with `offset` if `hasMore` is true. Only **fact metrics** (IDs starting `fact__`) can be explored — legacy metrics from `/api/v1/metrics` cannot. Capture from the chosen metric: `id`, `metricType` (`mean`, `proportion`, `retention`, `dailyParticipation`, `ratio`, `quantile`), and `numerator.factTableId`.
+Use a match with `explorerType: "metric"` and capture its `id`, `name`, and `type`. Prefer `official: true` when equivalent matches exist.
 
-**A-2. Get the unit.** Fetch the numerator's fact table for `userIdTypes`:
+**A-2. Get columns and units.** Pass one or more selected metric IDs:
 
 ```bash
-gb-call GET /api/v1/fact-tables/<factTableId>
+gb-call GET '/api/v1/product-analytics/columns?source=metric&metricIds=fact__abc123'
 ```
 
-**A-3. Build and run.** For `mean`, `proportion`, `retention`, and `dailyParticipation` metrics set `unit` to `userIdTypes[0]` (e.g. `"user_id"`); for `ratio` and `quantile` metrics set `unit: null`. `denominatorUnit` is always `null`.
+Follow the returned `userIdTypes` and per-metric `needsUnit` fields. Use `userIdTypes[0]` whenever `needsUnit` is true and as the safe default for `mean`, `proportion`, `retention`, and `dailyParticipation`; use `null` for other metric types unless `needsUnit` says otherwise. If a row filter or concrete dimension value is needed, query the actual string-column values first:
+
+```bash
+echo '{"source":"metric","metricIds":["fact__abc123"],"columns":["country"],"searchTerm":"US","limit":20}' \
+  | gb-call POST /api/v1/product-analytics/column-values -
+```
+
+Never guess a value. If the response is empty, broaden `searchTerm` once or ask the user for a different value.
+
+**A-3. Build and run.**
 
 ```bash
 echo '<config-json>' | gb-call POST '/api/v1/product-analytics/metric-exploration?cache=preferred' -
@@ -99,21 +110,27 @@ Multiple metrics can share one chart via multiple `values[]` entries, with limit
 
 ### Path B — fact-table exploration
 
-**B-1. Find the fact table.**
+**B-1. Find the fact table and its columns.**
 
 ```bash
-gb-call GET '/api/v1/fact-tables?datasourceId=<ds_id>&limit=100'
+gb-call GET '/api/v1/product-analytics/search?query=orders&datasourceId=<ds_id>&limit=20&skip=0'
+gb-call GET '/api/v1/product-analytics/columns?source=fact_table&factTableId=ftb_abc123'
 ```
 
-Filter client-side by name. Capture `id`, `userIdTypes`, and `columns[]` (each has `column`, `datatype`, `deleted`, and — for string columns — `topValues`). Ignore columns with `deleted: true`.
+Choose a match with `explorerType: "fact_table"`. Use the returned columns, `userIdTypes`, and `unitNote`. Before using a concrete string value, call `/column-values`:
+
+```bash
+echo '{"source":"fact_table","factTableId":"ftb_abc123","columns":["country"],"limit":20}' \
+  | gb-call POST /api/v1/product-analytics/column-values -
+```
 
 **B-2. Build and run.** Each value has a `valueType`:
 
-| `valueType` | Meaning | `valueColumn` | `unit` |
-| --- | --- | --- | --- |
-| `unit_count` | Distinct units (e.g. unique users) | `null` | `userIdTypes[0]` |
-| `count` | Row count | `null` | `null` |
-| `sum` | Sum of a numeric column | a `number`-datatype column | `null` |
+| `valueType`  | Meaning                            | `valueColumn`              | `unit`           |
+| ------------ | ---------------------------------- | -------------------------- | ---------------- |
+| `unit_count` | Distinct units (e.g. unique users) | `null`                     | `userIdTypes[0]` |
+| `count`      | Row count                          | `null`                     | `null`           |
+| `sum`        | Sum of a numeric column            | a `number`-datatype column | `null`           |
 
 ```bash
 echo '<config-json>' | gb-call POST '/api/v1/product-analytics/fact-table-exploration?cache=preferred' -
@@ -205,22 +222,74 @@ echo '<config-json>' | gb-call POST '/api/v1/product-analytics/data-source-explo
 }
 ```
 
+### Path D — funnel exploration
+
+Search for each step's fact table, then call `/columns` for every selected table. Choose a single identifier present in every table's `userIdTypes`. Use `/column-values` before adding any concrete row-filter value to a step.
+
+Each step is `{ "name", "factTableId", "rowFilters", "optional", "conversionWindow" }`. Keep the user's order. `conversionWindow` is `null` or `{ "unit": "hours" | "days" | "weeks", "value": <positive number> }`.
+
+```bash
+echo '<config-json>' | gb-call POST '/api/v1/product-analytics/funnel-exploration?cache=preferred' -
+```
+
+```json
+{
+  "type": "funnel",
+  "datasource": "ds_abc123",
+  "chartType": "bar",
+  "dateRange": { "predefined": "last30Days" },
+  "dimensions": [],
+  "dataset": {
+    "type": "funnel",
+    "unit": "user_id",
+    "steps": [
+      {
+        "name": "Signed up",
+        "factTableId": "ftb_signup",
+        "rowFilters": [],
+        "optional": false,
+        "conversionWindow": null
+      },
+      {
+        "name": "Purchased",
+        "factTableId": "ftb_purchase",
+        "rowFilters": [],
+        "optional": false,
+        "conversionWindow": { "unit": "days", "value": 7 }
+      }
+    ],
+    "concurrencyWindowSeconds": 0,
+    "yAxisScale": "percent"
+  }
+}
+```
+
 ### 3. Interpret the response
 
-A `200` is **not** success — check `exploration.status`:
+A `200` is only a transport-level success. Branch on `exploration.status`:
 
-- `"success"` → read `exploration.result.rows`. Each row is `{ dimensions: [...], values: [{ metricId, numerator, denominator }] }`. **Rows come back unordered** — sort by the date dimension client-side before presenting any trend, or you'll read the series out of sequence. When the numbers look surprising, read the response's `query.query` field: it carries the fully compiled SQL, which shows exactly how each metric's numerator and denominator were built (this is the fastest way to catch an unexpected aggregation).
-- `"error"` → surface `exploration.error`, fix the config, and retry (see Guardrails for the retry budget).
-- `"running"` → rare; the run ended without resolving. There is no GET to poll an exploration, and the cache only matches succeeded runs — so wait (`sleep 10`), then re-POST the identical config with `cache=preferred` **once** (it either hits the now-finished cache or re-runs). If it's still `"running"`, stop and hand the user the `explorationUrl` — the app polls it live.
-- `exploration: null` with a `message` → only happens with `cache=required`; there was no cached result.
+- `"success"` → read the complete `exploration.result.rows` returned by the API. Standard rows contain `dimensions` and `values`; funnel rows contain `dimensions` and `steps`. Sort date dimensions before describing a trend. Use these full rows—not a rendered chart, config, summary, or truncated preview—for every concrete number.
+- `"running"` → pending, not success. Capture `exploration.id`, wait 10 seconds, then poll:
 
-Then report: 1–2 sentences with the key numbers, plus the `explorationUrl` from the response — that link renders the interactive chart in GrowthBook, which is the user's visual. For per-unit values divide `numerator / denominator`; for totals use `numerator` alone — **except** for `proportion`, `retention`, and `dailyParticipation` metrics, where the two come back equal (see Guardrails), so read the `numerator` as a distinct-unit count, never the ratio as a rate. **Treat the current day (and any low-volume trailing bucket) as partial** — today's bucket is still filling, so it reads as a sharp drop that isn't real. Flag it as partial rather than presenting it as a decline.
+  ```bash
+  sleep 10
+  gb-call GET /api/v1/product-analytics/explorations/<exploration-id>
+  ```
 
-If the result has 0 rows, don't present that as the answer yet: widen the date range, loosen row filters, or reconsider the metric/fact-table choice, then retry once before concluding there's no data.
+  Repeat the wait + GET pair for at most 6 GET attempts (about 60 seconds), stopping immediately on `success` or `error`. Do not re-POST while the same exploration is running. If it is still running after the final poll, report a timeout and the latest `explorationUrl`; do not invent or estimate results.
+
+  If the polling GET returns 404, the endpoint is unsupported or the exploration is missing or inaccessible. Stop, return the POST response's `explorationUrl`, and surface that ambiguity; never probe around access checks or poll by re-POSTing the config.
+
+- `"error"` → surface `exploration.error`, correct the config, and retry within the Guardrails budget.
+- `exploration: null` with a `message` → no result was returned (for example, `cache=required` found no cached run). Surface the message and stop or retry with `cache=preferred` when appropriate.
+
+On success, report 1–2 sentences with concrete insights from the full rows plus `explorationUrl`. For per-unit values divide `numerator / denominator`; for totals use `numerator` alone—except for `proportion`, `retention`, and `dailyParticipation`, where `numerator` is a distinct-unit count rather than a standalone rate. Treat the current day and any low-volume trailing bucket as partial.
+
+If the full result has 0 rows, do not present it as the answer yet. Widen the date range, verify or loosen filters with `/column-values`, or search for a better source, then retry once. If the retry is still empty, say no data was found. An empty result is not a successful chart for the per-turn budget, but the single empty-result retry is still the limit—do not fan out alternatives.
 
 ### 4. Follow-up modifications
 
-For "break that down by country", "make it a bar chart", "last 90 days instead": start from the config you just ran and change only what was asked — don't rebuild from scratch. Re-POST to the same endpoint. Changing only `chartType` is free (it hits the cache); anything else re-queries.
+For "break that down by country", "make it a bar chart", or "last 90 days instead", start from the previous response's `exploration.config` and change only what the user asked for. Never reconstruct from the original request config. Re-POST to the same endpoint. Changing only `chartType` is free (it hits the cache); anything else re-queries. Because follow-ups arrive in a new user turn, they get a new one-successful-chart budget.
 
 ## Config rules
 
@@ -239,19 +308,23 @@ For "break that down by country", "make it a bar chart", "last 90 days instead":
 
 Maximum 2 dimensions total (the date dimension counts); with more than one `values[]` entry, maximum 1 dimension. Only add a breakdown dimension when the user asks to break down / split / group by something.
 
-**Row filters.** Shape: `{ "operator", "column", "values": ["..."] }` per filter, ANDed together. Operators: `=`, `!=`, `<`, `<=`, `>`, `>=`, `in`, `not_in`, `contains`, `not_contains`, `starts_with`, `ends_with`, `is_null`, `not_null`, `is_true`, `is_false`. Null/boolean operators take no `values`. Never guess a filter value — check the column's `topValues` on the fact table first (see Guardrails).
+**Row filters.** Shape: `{ "operator", "column", "values": ["..."] }` per filter, ANDed together. Operators: `=`, `!=`, `<`, `<=`, `>`, `>=`, `in`, `not_in`, `contains`, `not_contains`, `starts_with`, `ends_with`, `is_null`, `not_null`, `is_true`, `is_false`. Null/boolean operators take no `values`. Never guess a filter value—call `POST /api/v1/product-analytics/column-values` first.
 
 **`showAs`.** Optional top-level toggle between raw totals (`"total"`) and per-unit averages (`"per_unit"`). Omit it in almost all cases — the chart infers a sensible default. Set it only when the user clearly asks for one view ("per user" → `per_unit`; "total X" → `total`), and only when at least one value is a `mean` metric — it has no effect on fact-table/data-source datasets or on proportion/retention/ratio/quantile metrics.
 
 ## Guardrails
 
-- **A `200` is not success.** The exploration runs synchronously but query errors are swallowed server-side; the response can carry `status: "error"` (with the reason in `exploration.error`) or `status: "running"`. Always branch on `exploration.status`, never on the HTTP code alone.
-- **Explorations run real warehouse queries.** They cost compute and can take tens of seconds. Default to `cache=preferred` (reuses a recent identical run); use `cache=never` only when the user explicitly wants fresh numbers. Don't fan out multiple exploration calls in parallel — one at a time, and mind the 60 rpm API rate limit.
+- **A `200` can still be pending or failed.** Always branch on `exploration.status`. Poll a running exploration by ID; do not re-POST it. Surface errors, and stop after the bounded timeout.
+- **Poll existing runs by id.** When a POST returns `"running"`, wait 10 seconds and use `GET /api/v1/product-analytics/explorations/:id`. Stop after 6 GET attempts and return the exploration link if it is still running.
+- **Treat 404s conservatively.** A 404 from `/product-analytics/search` means the server predates these workflow endpoints. On resource-specific calls it can also mean missing or inaccessible. Surface the failure and stop. For a running exploration, return its existing `explorationUrl`; never probe around access checks or fall back to re-POSTing it.
+- **Use full rows for numbers.** Concrete insights must come from all returned `exploration.result.rows`, never a chart image, preview, truncated summary, requested config, or guess.
+- **At most one successful chart per user turn.** Discovery calls, value lookups, polling, config-error retries, and one empty-result retry are permitted. After one non-empty exploration succeeds, report it and stop.
+- **Explorations run real warehouse queries.** They cost compute and can take tens of seconds. Default to `cache=preferred` (reuses a recent identical run); use `cache=never` only when the user explicitly wants fresh numbers. Run explorations one at a time and mind the 60 rpm API rate limit.
 - **Cache matching ignores `chartType`.** Re-rendering the same data as a different chart type is a free cache hit — never re-query just to restyle.
-- **Always set `unit` explicitly.** The server does not backfill a missing unit: a `null` unit on a `mean`/`proportion`/`retention`/`dailyParticipation` metric silently switches the SQL to event-level aggregation instead of erroring — wrong numbers, no warning. Set `userIdTypes[0]` for those types; `null` for `ratio`/`quantile`. A unit not in the fact table's `userIdTypes` fails the run.
+- **Always set `unit` explicitly.** Follow `/columns` response fields `metrics[].needsUnit`, `userIdTypes`, and `unitNote`; a missing or invalid unit can silently change aggregation or fail the run.
 - **`proportion`, `retention`, and `dailyParticipation` metrics return `numerator == denominator` in a standalone exploration.** These types emit one row per qualifying unit (`CASE WHEN filter THEN 1 ELSE NULL`, then `MAX` per unit, then `SUM AS numerator` / `COUNT AS denominator`), so the ratio is structurally ~1.0 (100%) — outside an experiment there is no exposure population to divide against. Read the **`numerator` as a distinct-unit count** ("users who did X that day"), never the ratio as a rate. `showAs: per_unit` degenerates to ~1 for these and has no effect (the server's own `metricHasMeaningfulPerUnit` returns false for them). `mean` is the exception — its denominator is a real unit count, so per-unit is a true average; `ratio`/`quantile` emit no `COUNT` denominator at all.
-- **Never guess column values for filters.** There is no value-lookup endpoint on the REST API. Use the `topValues` array on the fact table's string columns (`GET /api/v1/fact-tables/:id`) — it's refreshed by a background job, so it can be stale or absent. If the value you need isn't there, ask the user for the exact value or fall back to a `contains` filter, and say which you did.
-- **Metric explorations take fact metrics only.** Legacy metrics (`GET /api/v1/metrics`, IDs like `met_...`) are not chartable — only `fact__...` IDs from `/api/v1/fact-metrics`. If the user's metric is legacy-only, say so and offer the fact-table path against the underlying table.
+- **Never guess column values.** Call `POST /api/v1/product-analytics/column-values` before using a concrete string value in a filter or breakdown. It executes a warehouse query, supports up to five columns, and can return warnings for non-string or missing columns. If no exact value is returned after one broader lookup, ask the user instead of inventing one.
+- **Use Product Analytics search as the chartable catalog.** Pick returned resources by `explorerType`; do not substitute a legacy experiment metric or an unreturned name.
 - **Everything must live on the exploration's datasource.** All metrics in `values[]` (and the fact table, and the raw table) must belong to `config.datasource`, or the POST fails with a 400.
 - **SQL datasources only.** Mixpanel and Google Analytics datasources return "Datasource is not a SQL datasource". Filter them out during datasource selection.
 - **403 means missing `runQueries` permission** on the datasource for the token's user — not a bad key. Point the user at their PAT's role/scopes, or hand off to the **gb-setup** skill to switch tokens.
@@ -263,14 +336,16 @@ Maximum 2 dimensions total (the date dimension counts); with more than one `valu
 ## Endpoints used
 
 - `GET /api/v1/data-sources` — list datasources for selection
-- `GET /api/v1/fact-metrics` — find fact metrics (`datasourceId`, `factTableId`, `projectId`, `limit`, `offset`)
-- `GET /api/v1/fact-tables` — find fact tables (`datasourceId`, `projectId`, `limit`, `offset`)
-- `GET /api/v1/fact-tables/:id` — columns, `userIdTypes`, `topValues`
+- `GET /api/v1/product-analytics/search` — search or browse chartable metrics and fact tables
+- `GET /api/v1/product-analytics/columns` — get usable columns and unit requirements
+- `POST /api/v1/product-analytics/column-values` — query actual string-column values; read-only but incurs warehouse cost
 - `GET /api/v1/data-sources/:id/information-schema` — browse warehouse databases/schemas/tables
 - `GET /api/v1/information-schema-tables/:tableId` — raw table columns + datatypes
 - `POST /api/v1/product-analytics/metric-exploration` — run a metric chart
 - `POST /api/v1/product-analytics/fact-table-exploration` — run a fact-table chart
 - `POST /api/v1/product-analytics/data-source-exploration` — run a raw-table chart
+- `POST /api/v1/product-analytics/funnel-exploration` — run a funnel chart
+- `GET /api/v1/product-analytics/explorations/:id` — poll a pending exploration
 
 ## Handoffs
 
