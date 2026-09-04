@@ -287,7 +287,7 @@ Ask only where the answer changes a block. Everywhere else, build something reas
 - **`explorerAnalysisId` is the server's to fill.** Omit it on every chart block you have not run yourself.
 - **A chart that cannot run fails the whole create.** The dashboard is not created, and the error names what went wrong. Fix that block's config and call again — there is no partial dashboard to clean up.
 - **One datasource per chart.** Every metric in a chart's `values[]`, every fact table, and every raw table must belong to that chart's own `config.datasource`, or the run fails. Different tiles may use different ones.
-- **Always set `unit` explicitly** on a metric exploration value: `userIdTypes[0]` for `mean`, `proportion`, `retention`, and `dailyParticipation`; `null` for `ratio` and `quantile`. A missing unit is not backfilled — it silently switches to event-level aggregation.
+- **Always set `unit` explicitly** on each `dataset.values[]` entry, never on the config, which rejects it: `userIdTypes[0]` for `mean`, `proportion`, `retention`, and `dailyParticipation`; `null` for `ratio` and `quantile`. A missing unit is not backfilled — it silently switches to event-level aggregation.
 - **`last14Days` is not a valid date range.** Only `today`, `yesterday`, `last7Days`, `last30Days`, `last90Days`, `last12Months`, `lastCalendarYear`, `customLookback`, and `customDateRange`. Anything else goes through `customLookback`.
 - **One legend, and only on a new dashboard.** Exactly one `markdown` block, first. No section headings, no per-group captions.
 - **Charts cost money and time.** Every chart block runs a real warehouse query on create. A twelve-tile dashboard is twelve queries — build what the user asked for, not a speculative superset.

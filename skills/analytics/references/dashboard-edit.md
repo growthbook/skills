@@ -84,7 +84,26 @@ Show the user what changes before the PUT: which tiles are being added, which re
 
 Every field on an update is optional, and leaving one out keeps the saved value. That makes a narrow change genuinely narrow — a timeframe change needs `globalControls` alone.
 
-The exception is `blocks`. Send it and it replaces the list; omit it and every tile is left alone. There is no way to add or remove a single tile.
+The exception is `blocks`. Send it and it replaces the list; omit it and every tile is left alone.
+
+**Carry a tile you are not changing as `{ "id": "dshblk_…" }`.** The list still defines membership and order, so a tile you leave out is deleted — but a tile you are keeping needs nothing but its id. Only write out a block in full when you are adding it or changing it. Copying a saved tile back verbatim is a transcription job with nothing to gain and a metric id to get wrong.
+
+Adding one chart to a five-tile dashboard is therefore five refs and one new block:
+
+```json
+{
+  "blocks": [
+    { "id": "dshblk_a" },
+    { "id": "dshblk_b" },
+    { "id": "dshblk_c" },
+    { "id": "dshblk_d" },
+    { "id": "dshblk_e" },
+    { "type": "metric-exploration", "title": "Revenue per User — past 6 months", "description": "", "layout": { "x": 0, "y": 24, "w": 24, "h": 8 }, "config": { "…": "…" } }
+  ]
+}
+```
+
+An id that is not on the dashboard is rejected, so a mistyped ref fails the write instead of quietly dropping a tile.
 
 Changing `globalControls.dateRange` re-runs every chart enrolled in it, against the new range. A dashboard with many tiles is many warehouse queries, so change the date range only when that is what the user asked for.
 
@@ -92,7 +111,7 @@ Changing `globalControls.dateRange` re-runs every chart enrolled in it, against 
 
 - **Read before you write.** Always `GET` the dashboard in the same turn as the `PUT`. A block list built from an earlier read, or from the create call you made, can be stale.
 - **Send the full block list, or none.** A partial list deletes the tiles it omits.
-- **Keep `id`, `uid`, `organization`, and `layout` on every carried block.** A block sent without them is treated as new: it gets a fresh id, loses its position, and the tile the user had is gone.
+- **Carry an unchanged tile by id alone.** `{ "id": "dshblk_…" }` keeps it exactly as saved. When you do send a block in full because you changed it, keep its `id` and `layout` — a block sent without an id is treated as new, so it gets a fresh one, loses its position, and the tile the user had is gone.
 - **Drop `explorerAnalysisId` only when you changed that chart's `config`.** Dropping it otherwise re-runs a query for nothing; keeping it after a config change shows numbers that do not match the tile.
 - **Summarize the delta, then get a yes.** State what changes, not what the dashboard ends up as: tiles added, tiles removed, tiles whose config moved, and anything dashboard-wide such as the date range. Name removals explicitly — that is the change a user is most likely to have meant differently. Tiles carried through untouched need no mention.
 - **A chart that cannot run fails the whole update.** Nothing is written, and the error names the block. Fix that config and call again.
