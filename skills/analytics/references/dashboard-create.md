@@ -32,7 +32,7 @@ It deliberately stops at creation. Renaming, re-scoping, and adding or removing 
 
 ### 1. Pick the datasource
 
-Each chart carries its own `config.datasource`, so one dashboard can span several. Default to a single one — tiles that share a source read as one story — and only reach for a second when the user asks for metrics that live there. If a datasource is already established in this conversation, reuse it.
+Each chart carries its own `config.datasource`, so one dashboard can span several. This step picks the **default** — the source a chart uses when nothing else pins it, and the one to browse when the user named no metrics. Step 4 can add more: a named metric brings its own datasource with it. If one is already established in this conversation, reuse it.
 
 ```bash
 gb-call GET /api/v1/data-sources
@@ -73,10 +73,14 @@ If the request clearly implies an archetype, pick it and say which one you picke
 Use `metric-search` if the user's metrics are not resolved yet, or list directly:
 
 ```bash
+# The user named metrics: search every datasource, so one outside the default is still found.
+gb-call GET '/api/v1/fact-metrics?limit=100'
+
+# They named none: browse what the default can chart.
 gb-call GET '/api/v1/fact-metrics?datasourceId=<ds_id>&limit=100'
 ```
 
-Once per datasource the dashboard uses.
+Filtering by the step-1 pick before the metrics are resolved is how a requested metric goes missing. Each hit's own `datasource` becomes that chart's `config.datasource`; when a hit belongs to a source that cannot run explorations, say so rather than dropping it quietly.
 
 Only fact metrics (`fact__...`) are chartable. Capture `id`, `metricType`, and `numerator.factTableId` for each, then fetch the fact table for its `userIdTypes`:
 
