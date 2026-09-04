@@ -1,6 +1,6 @@
 ---
 name: analytics
-description: Chart GrowthBook product data and manage the metric catalog — run Product Analytics explorations, search metrics and fact tables, or create fact metrics and their fact tables. Use for "show me signups by country", "chart daily active users", "how many orders last week", "find our revenue metric", "what fact tables exist", "create a metric", "add a revenue metric", "track conversion rate", or "define a metric on the orders table". For an A/B test's results or choosing experiment metrics, use experiments. For feature flags, use feature-flags. For first-time API key configuration, use gb-setup.
+description: Chart GrowthBook product data and manage the metric catalog — run Product Analytics explorations, search metrics and fact tables, create fact metrics and their fact tables, and migrate legacy metrics onto fact tables. Use for "show me signups by country", "chart daily active users", "how many orders last week", "find our revenue metric", "what fact tables exist", "create a metric", "add a revenue metric", "track conversion rate", "define a metric on the orders table", "migrate our legacy metrics", "move metrics to fact tables", or "convert met_ metrics". For an A/B test's results or choosing experiment metrics, use experiments. For feature flags, use feature-flags. For first-time API key configuration, use gb-setup.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *), Bash(sleep *)
 ---
 
@@ -19,8 +19,11 @@ All API calls go through the bundled helper. Under the Claude Code plugin instal
 | `references/metric-search.md` | Browse, find, or audit metrics and fact tables — inventory, a specific definition, or "what can I chart" triage (read-only) |
 | `references/metric-create.md` | Create a fact metric, creating its underlying fact table first when necessary (writes configuration) |
 | `references/analytics-explore.md` | Actually run a chart and report the numbers plus a deep link |
+| `references/metric-migrate.md` | Migrate legacy `met_...` metrics to fact tables and fact metrics, then archive the originals (writes heavily) |
 
 When the user names a metric you have not resolved yet, read `metric-search.md` first. It hands `analytics-explore` or `metric-create` a stable definition. When they already named something concrete and just want the numbers, go straight to `analytics-explore.md`.
+
+Both `metric-create` and `metric-migrate` write to the catalog: `metric-create` defines a new metric from scratch, `metric-migrate` mechanically ports ones that already exist as legacy metrics. When the user wants to *change* the catalog rather than read it — moving legacy metrics onto fact tables — that's `metric-migrate.md`. "We still have legacy metrics" is an audit (`metric-search`); "migrate our legacy metrics" is a migration (`metric-migrate`). If it's ambiguous, run the audit first and offer the migration.
 
 ## Shared conventions
 
@@ -32,12 +35,16 @@ When the user names a metric you have not resolved yet, read `metric-search.md` 
 - **A `200` from an exploration POST is not success.** The run is synchronous but errors are swallowed server-side: branch on `exploration.status` (`success` / `error` / `running`), and note that `cache=required` can return `exploration: null`.
 - **Always set `unit` explicitly** on a metric exploration. A missing `unit` is not backfilled — it silently switches to event-level aggregation instead of erroring.
 - **Restyling a chart is free.** Cache matching ignores `chartType`, so a different chart type on the same query is a cache hit. Never re-query just to restyle.
+- **`GET /api/v1/metrics` includes archived metrics by default.** Pass `includeArchived=false` whenever you list legacy metrics to work with.
+- **Bulk import defaults `managedBy` to `"api"`, which disables UI editing.** `POST /api/v1/bulk-import/facts` applies it to any fact table or fact metric that omits the field. Send `defaultManagedBy: ""` at the top level unless the user genuinely wants API-only resources.
 
 ## Read-only vs. write
 
 `metric-search` is strictly read-only. `analytics-explore` runs warehouse queries but changes no GrowthBook configuration — it does not create metrics, fact tables, or dashboards. `metric-create` writes organization-visible fact-table and fact-metric definitions; it must show the payload and get confirmation before each POST.
 
 Note that explorations execute real warehouse queries, so they cost the user money and time even though they write nothing. Scope them the way the reference file describes rather than fanning out speculatively.
+
+`metric-migrate` is the one workflow here that writes, and it writes on both sides: it creates fact tables and fact metrics, then archives the legacy metrics they replace. Two gates are non-negotiable. **A `dryRun: true` import must come back clean and be approved before any write** — the user sees every proposed fact table, every mapping, and everything being left behind first. And **a legacy metric is never archived until its replacement is verified to exist**, nor while it still feeds a running experiment. Creating a metric from scratch, rather than as the equivalent of an existing legacy one, is `metric-create`.
 
 ## Handoffs
 

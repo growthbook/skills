@@ -2,6 +2,29 @@
 
 All notable changes to the `growthbook` plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [2.1.0] — Unreleased
+
+### Added — `metric-migrate`, a fourth `analytics` workflow
+
+Migrates legacy metrics (`met_...`) to Fact Tables and Fact Metrics: inventory the live legacy metrics, group them into fact tables by shared SQL, bulk-import the equivalents — each declaring the legacy metric it `replaces` — then archive the originals.
+
+It writes on both sides — creating fact metrics and archiving the legacy originals — which `metric-create` does not. Two gates: a `dryRun: true` import that must come back clean and be approved before any live write, and a rule that no legacy metric is archived until its replacement is verified to exist and no running experiment still uses it (`GET /api/v1/usage/metrics?ids=`, which expands metric groups server-side).
+
+Denominator handling follows the semantics change deliberately rather than papering over it. One `count` denominator maps to `ratio` faithfully. One `binomial` denominator also maps to `ratio` — the legacy behavior was an activation filter and the numbers will move, but that is the correction most users want — so it is the default, called out per metric in the dry run with a `funnel` override offered. A chain of two or more binomial denominators is a genuine ordered sequence and becomes a single `funnel` metric replacing the whole chain.
+
+`replaces` carries the migration's provenance. It links the two definitions in the UI and keeps experiment results rendering: results are drawn from the live metric list against a frozen snapshot, so a metric swapped in after a snapshot ran would otherwise show nothing — the replaced metric's rows are substituted and flagged instead. That is what makes an in-place metric-group edit safe, so groups are updated directly rather than cloned.
+
+**API behaviors now in the CLAUDE.md catalog:**
+
+- `GET /api/v1/metrics` includes archived metrics unless `includeArchived=false` is passed.
+- `POST /api/v1/bulk-import/facts` defaults `managedBy` to `"api"`, which disables UI editing — send `defaultManagedBy: ""`.
+- A `200` from a dry run is not success: it collects every failing resource, so branch on `success` and `errors[]`.
+- A live bulk import is not transactional — it stops at the first failure and returns `400` (`403` for permissions) with the write counts and `errors[]`. Deterministic ids make a corrected re-run an upsert.
+- `proportion`/`retention`/`funnel` metrics have `numerator.column` silently overwritten with `$$distinctUsers` (`dailyParticipation` with `$$distinctDates`) and `aggregation` cleared — no error, so a wrong column yields a quietly different metric.
+- Ratio metrics support only `percentile` capping, but that rule lives only in the UI — the API accepts `absolute` without complaint.
+- Legacy metrics with `managedBy: "config"` cannot be archived. They still migrate; the original is retired in `config.yml`.
+- Experiment templates are by-value, so swapping their metric ids is forward-only; `PUT /api/v1/experiment-templates/:id` is the true partial, while the bulk endpoint takes full create bodies.
+
 ## [2.0.0] — Unreleased
 
 ### Changed — BREAKING: 25 skills reorganized into 4 domain skills

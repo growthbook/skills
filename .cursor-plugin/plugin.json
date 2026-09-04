@@ -2,7 +2,7 @@
   "$schema": "https://cursor.com/schemas/cursor-plugin/plugin.json",
   "name": "growthbook",
   "displayName": "GrowthBook",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Full-lifecycle agent skills for GrowthBook feature flags, experimentation, and product analytics.",
   "author": {
     "name": "GrowthBook",

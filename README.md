@@ -54,6 +54,7 @@ Turn the metrics and fact tables you already use for experimentation into ad-hoc
 | `metric-search` | Search, list, and audit fact metrics and fact tables — definitions, columns, and what's chartable. Read-only. |
 | `metric-create` | Create a fact metric, and the fact table underneath it when one doesn't exist yet. Covers all seven metric types; analysis settings inherit the org defaults. |
 | `analytics-explore` | Build and run a chart: a metric over time, a fact-table aggregation, or a raw warehouse table. Returns the numbers plus a deep link to the rendered chart. |
+| `metric-migrate` | Migrate legacy `met_...` metrics to fact tables and fact metrics — group them by shared SQL, bulk-import the equivalents, then archive the originals. Writes; gated behind a dry run. |
 
 ### `gb-setup`
 
@@ -120,6 +121,7 @@ You don't invoke workflows directly — the domain skill picks one from your req
 - **Experiment on an existing flag:** `flag-experiment` → `experiment-launch` (reuses the existing flag) → `experiment-stop` → `flag-cleanup`
 - **Analytics:** `metric-search` → `analytics-explore` → `experiment-design` (when a chart surfaces something worth testing)
 - **Metric setup:** `metric-search` (does it exist?) → `metric-create` → `analytics-explore` (sanity-check the numbers) → `experiment-design`
+- **Legacy metric migration:** `metric-search` (audit) → `metric-migrate` → `analytics-explore` (sanity-check the new fact metrics against the old numbers)
 
 ## What these skills do not do
 
@@ -174,7 +176,7 @@ skills/
   analytics/
     SKILL.md
     references/
-      metric-search.md  metric-create.md  analytics-explore.md
+      metric-search.md  metric-create.md  analytics-explore.md  metric-migrate.md
   gb-setup/
     SKILL.md                           # one-time onboarding; no references/
 
