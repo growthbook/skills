@@ -43,6 +43,7 @@ The full flag lifecycle. Flag changes go through a draft revision before going l
 | `experiment-launch` | End-to-end launch: create the experiment, prep or reuse the feature flag, wire the experiment-ref rule, and call `/start`. Handles approval and pre-launch checklist failure paths. |
 | `experiment-analyze` | Trigger a fresh snapshot, poll until ready, then interpret results (SRM check, lifts, CIs, guardrails). |
 | `experiment-stop` | Stop a running experiment, optionally declaring a winner and enabling a temporary rollout. Full post-stop flag disposition guidance. |
+| `learnings` | Search, read, and record Learnings — durable conclusions drawn across multiple experiments. Check before designing a test; record after one generalizes. |
 
 ### `analytics`
 
@@ -114,7 +115,7 @@ Skills can activate automatically or through the client's explicit skill-invocat
 
 You don't invoke workflows directly — the domain skill picks one from your request. Workflows hand off to each other, so multi-step jobs compose cleanly:
 
-- **Experiment-first:** `experiment-design` → `experiment-launch` → `experiment-analyze` → `experiment-stop` → `flag-cleanup`
+- **Experiment-first:** `learnings` (what do we already know?) → `experiment-design` → `experiment-launch` → `experiment-analyze` → `experiment-stop` → `flag-cleanup`, recording back to `learnings` when a result generalizes
 - **Flag-first:** `flag-create` → `flag-toggle` → `flag-targeting` → `flag-ramp` / `flag-monitoring` → `flag-cleanup`
 - **Experiment on an existing flag:** `flag-experiment` → `experiment-launch` (reuses the existing flag) → `experiment-stop` → `flag-cleanup`
 - **Analytics:** `metric-search` → `analytics-explore` → `experiment-design` (when a chart surfaces something worth testing)
@@ -169,7 +170,7 @@ skills/
     SKILL.md
     references/
       experiment-brainstorm.md  experiment-design.md  experiment-launch.md
-      experiment-analyze.md     experiment-stop.md
+      experiment-analyze.md     experiment-stop.md    learnings.md
   analytics/
     SKILL.md
     references/

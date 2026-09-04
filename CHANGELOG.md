@@ -28,6 +28,11 @@ Automatic invocation is unaffected — describe the task and the right domain sk
 - Clarified bandit scope: the GrowthBook REST API supports multi-armed bandit experiments and separate Enterprise beta Contextual Bandits, but the current experiment workflows operate standard A/B tests only and halt on either bandit type.
 
 ### Added
+- `learnings` — search, read, and record Learnings, the durable conclusions a team has drawn across multiple experiments. Backed by the Learnings REST API added in [growthbook#5986](https://github.com/growthbook/growthbook/pull/5986): semantic search (`POST /api/v1/learnings/search`, ranked by meaning rather than keyword), list with `projectId` / `experimentId` / `tag` / `status` filters, and full CRUD. `experimentId` matches Learnings citing that experiment in either direction, supporting or contradicting.
+  - `experiment-design` now hands off to it before designing, so a settled question isn't re-tested; `experiment-analyze` hands off after a result that generalizes, so the conclusion outlives the experiment.
+  - Documents only what the REST API exposes. The in-app AI flows that *discover* Learnings across experiments and *refresh* one against newer experiments are app-only routes, so the skill points users at the Learnings page rather than attempting a call that would 404.
+  - Enterprise-gated: create, update, and search need a plan including Learnings, and search additionally needs AI enabled.
+  - Treats an empty corpus as the normal starting state rather than a finding: most orgs have no Learnings yet, so an empty search routes to `experiment-brainstorm` / `experiment-analyze` for the experiment record instead of reporting that nothing is known.
 - `metric-create` — create a fact metric, and the fact table underneath it when one does not exist yet. Covers all seven metric types (`proportion`, `retention`, `mean`, `quantile`, `ratio`, `dailyParticipation`, and `funnel`), row filters, and quantile/funnel settings. Stops at the metric definition; analysis settings inherit organization defaults.
 
 ### Changed
