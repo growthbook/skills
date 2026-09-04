@@ -58,7 +58,7 @@ Start from the blocks you just read and change only what was asked. For every bl
 | Reorder or resize | Change the `layout` on the blocks involved. |
 | Reconfigure a chart | Change its `config` **and drop its `explorerAnalysisId`**, so the write re-runs it. Keeping the old id leaves the tile showing the old numbers. |
 | Rename the dashboard | Send `title`. |
-| Change the timeframe | Send `globalControls.dateRange`. |
+| Change the timeframe | Send `globalControls.dateRange`. Only the nine `predefined` names below are real; anything else is `customLookback`. |
 | Turn comparison on | Send `comparison`. |
 
 **`markdown` blocks on a saved dashboard are the user's words.** Carry every one through verbatim and in place, however many there are. Add or reword one only when the user asks — a dashboard with none may well have had one removed on purpose. If your change leaves a legend describing a chart that is gone, say so in your reply and offer to update it, leaving their words as they are.
@@ -114,6 +114,7 @@ Changing `globalControls.dateRange` re-runs every chart enrolled in it, against 
 - **Carry an unchanged tile by id alone.** `{ "id": "dshblk_…" }` keeps it exactly as saved. When you do send a block in full because you changed it, keep its `id` and `layout` — a block sent without an id is treated as new, so it gets a fresh one, loses its position, and the tile the user had is gone.
 - **Drop `explorerAnalysisId` only when you changed that chart's `config`.** Dropping it otherwise re-runs a query for nothing; keeping it after a config change shows numbers that do not match the tile.
 - **Summarize the delta, then get a yes.** State what changes, not what the dashboard ends up as: tiles added, tiles removed, tiles whose config moved, and anything dashboard-wide such as the date range. Name removals explicitly — that is the change a user is most likely to have meant differently. Tiles carried through untouched need no mention.
+- **The closed `predefined` list applies twice here**: to `globalControls.dateRange` and to each block's `config.dateRange`. The names are in the router's shared conventions; anything outside them is `customLookback`, so six months is `{ "predefined": "customLookback", "lookbackValue": 6, "lookbackUnit": "month" }` in both places.
 - **A chart that cannot run fails the whole update.** Nothing is written, and the error names the block. Fix that config and call again.
 - **Leave `experimentId` out of the update.** It is rejected there, and a general dashboard has none.
 - **Renaming a tile is not renaming the dashboard.** A block's `title` is the tile heading; the dashboard's `title` is the page name.
