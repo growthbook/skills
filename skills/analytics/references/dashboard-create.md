@@ -161,6 +161,30 @@ The response is `{ "dashboard": { "id": "dash_...", ... } }`. Report what is on 
 
 **Omit `explorerAnalysisId`.** The create call runs each `config` and fills it in. Sending one binds the tile to a run you made yourself, which is only worth doing when you already have it.
 
+`config.type` is the **dataset kind** — `metric`, `fact_table`, `data_source`, or `funnel` — and it must match `dataset.type`. The picture is `chartType`, a separate field: `line`, `area`, `bar`, `stackedBar`, `horizontalBar`, `stackedHorizontalBar`, `table`, `timeseries-table`, `bigNumber`. A chart type is never a `config.type`.
+
+`datasource`, `dimensions`, `chartType`, `dateRange`, `type`, and `dataset` are all required. `dimensions: []` when the tile has no breakdown — leaving it out fails the write.
+
+A `metric-exploration` config, the one most tiles use:
+
+```json
+{
+  "type": "metric",
+  "datasource": "ds_abc123",
+  "chartType": "line",
+  "dateRange": { "predefined": "last30Days" },
+  "dimensions": [{ "dimensionType": "date", "column": null, "dateGranularity": "auto" }],
+  "dataset": {
+    "type": "metric",
+    "values": [
+      { "type": "metric", "name": "Revenue per User", "metricId": "fact__abc", "unit": "user_id", "denominatorUnit": null, "rowFilters": [] }
+    ]
+  }
+}
+```
+
+A big-number tile is that same config with `"chartType": "bigNumber"` and `"dimensions": []`. There is no `metric` shorthand — one metric is a `dataset.values` array of length one, and several big numbers on one tile are several entries in it.
+
 A `funnel-exploration` config uses the funnel dataset:
 
 ```json
