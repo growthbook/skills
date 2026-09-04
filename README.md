@@ -43,6 +43,7 @@ The full flag lifecycle. Flag changes go through a draft revision before going l
 | `experiment-launch` | End-to-end launch: create the experiment, prep or reuse the feature flag, wire the experiment-ref rule, and call `/start`. Handles approval and pre-launch checklist failure paths. |
 | `experiment-analyze` | Trigger a fresh snapshot, poll until ready, then interpret results (SRM check, lifts, CIs, guardrails). |
 | `experiment-stop` | Stop a running experiment, optionally declaring a winner and enabling a temporary rollout. Full post-stop flag disposition guidance. |
+| `learnings` | Search, read, and record Learnings — durable conclusions drawn across multiple experiments. Check before designing a test; record after one generalizes. |
 
 ### `analytics`
 
@@ -51,6 +52,7 @@ Turn the metrics and fact tables you already use for experimentation into ad-hoc
 | Workflow | What it does |
 | --- | --- |
 | `metric-search` | Search, list, and audit fact metrics and fact tables — definitions, columns, and what's chartable. Read-only. |
+| `metric-create` | Create a fact metric, and the fact table underneath it when one doesn't exist yet. Covers all seven metric types; analysis settings inherit the org defaults. |
 | `analytics-explore` | Build and run a chart: a metric over time, a fact-table aggregation, or a raw warehouse table. Returns the numbers plus a deep link to the rendered chart. |
 | `metric-migrate` | Migrate legacy `met_...` metrics to fact tables and fact metrics — group them by shared SQL, bulk-import the equivalents, then archive the originals. Writes; gated behind a dry run. |
 
@@ -114,15 +116,17 @@ Skills can activate automatically or through the client's explicit skill-invocat
 
 You don't invoke workflows directly — the domain skill picks one from your request. Workflows hand off to each other, so multi-step jobs compose cleanly:
 
-- **Experiment-first:** `experiment-design` → `experiment-launch` → `experiment-analyze` → `experiment-stop` → `flag-cleanup`
+- **Experiment-first:** `learnings` (what do we already know?) → `experiment-design` → `experiment-launch` → `experiment-analyze` → `experiment-stop` → `flag-cleanup`, recording back to `learnings` when a result generalizes
 - **Flag-first:** `flag-create` → `flag-toggle` → `flag-targeting` → `flag-ramp` / `flag-monitoring` → `flag-cleanup`
 - **Experiment on an existing flag:** `flag-experiment` → `experiment-launch` (reuses the existing flag) → `experiment-stop` → `flag-cleanup`
 - **Analytics:** `metric-search` → `analytics-explore` → `experiment-design` (when a chart surfaces something worth testing)
+- **Metric setup:** `metric-search` (does it exist?) → `metric-create` → `analytics-explore` (sanity-check the numbers) → `experiment-design`
 - **Legacy metric migration:** `metric-search` (audit) → `metric-migrate` → `analytics-explore` (sanity-check the new fact metrics against the old numbers)
 
 ## What these skills do not do
 
-- **No datasource creation, and no ad-hoc metric creation.** Create datasources in the GrowthBook UI and reference them by ID. Metrics are the same, with one exception: `metric-migrate` creates fact tables and fact metrics, but only as the mechanical equivalent of legacy metrics that already exist — it never designs a new metric from scratch.
+- **No datasource creation.** Connect datasources in the GrowthBook UI and reference them by ID; `metric-create` covers fact tables and fact metrics, but not the warehouse connection underneath them.
+- **No metric analysis tuning.** `metric-create` defines what a metric measures; conversion windows, capping, priors, and risk thresholds inherit the org defaults and are tuned in the GrowthBook UI.
 - **No SDK code generation.** Follow GrowthBook's SDK docs; these skills manage flags and experiments via the REST API, not the SDK.
 - **No bandit workflows yet.** GrowthBook's REST API supports multi-armed bandit experiments and separate Enterprise beta Contextual Bandits, but these skills currently target standard A/B tests. They identify either bandit type and halt rather than apply fixed-allocation experiment guidance to an adaptive experiment.
 - **No silent retries or rate-limit backoff in the helper.** GrowthBook is rate-limited at 60 rpm. The skills that fan out cap their call counts; multi-tenant orgs hitting concurrent requests may still see `429`s, which `gb-call` surfaces explicitly rather than retrying.
@@ -168,11 +172,11 @@ skills/
     SKILL.md
     references/
       experiment-brainstorm.md  experiment-design.md  experiment-launch.md
-      experiment-analyze.md     experiment-stop.md
+      experiment-analyze.md     experiment-stop.md    learnings.md
   analytics/
     SKILL.md
     references/
-      metric-search.md  analytics-explore.md  metric-migrate.md
+      metric-search.md  metric-create.md  analytics-explore.md  metric-migrate.md
   gb-setup/
     SKILL.md                           # one-time onboarding; no references/
 

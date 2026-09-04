@@ -4,11 +4,11 @@ All notable changes to the `growthbook` plugin are documented here. Format follo
 
 ## [2.1.0] — Unreleased
 
-### Added — `metric-migrate`, a third `analytics` workflow
+### Added — `metric-migrate`, a fourth `analytics` workflow
 
 Migrates legacy metrics (`met_...`) to Fact Tables and Fact Metrics: inventory the live legacy metrics, group them into fact tables by shared SQL, bulk-import the equivalents — each declaring the legacy metric it `replaces` — then archive the originals.
 
-It is the first `analytics` workflow that writes, and it writes on both sides. Two gates: a `dryRun: true` import that must come back clean and be approved before any live write, and a rule that no legacy metric is archived until its replacement is verified to exist and no running experiment still uses it (`GET /api/v1/usage/metrics?ids=`, which expands metric groups server-side).
+It writes on both sides — creating fact metrics and archiving the legacy originals — which `metric-create` does not. Two gates: a `dryRun: true` import that must come back clean and be approved before any live write, and a rule that no legacy metric is archived until its replacement is verified to exist and no running experiment still uses it (`GET /api/v1/usage/metrics?ids=`, which expands metric groups server-side).
 
 Denominator handling follows the semantics change deliberately rather than papering over it. One `count` denominator maps to `ratio` faithfully. One `binomial` denominator also maps to `ratio` — the legacy behavior was an activation filter and the numbers will move, but that is the correction most users want — so it is the default, called out per metric in the dry run with a `funnel` override offered. A chain of two or more binomial denominators is a genuine ordered sequence and becomes a single `funnel` metric replacing the whole chain.
 
@@ -50,7 +50,17 @@ Automatic invocation is unaffected — describe the task and the right domain sk
 - Documented the approval-failure split that the workflows had right but never explained: the **explicit** publish endpoint returns **400** (`BadRequestError` in `postFeatureRevisionPublish.ts`), while paths that publish as a *side effect* return **403** (`PermissionError` from `createAndPublishRevision`) — the environment toggle and `POST /v2/features/<id>` with `{archived}`. The `feature-flags` router now states both, plus 409 (stale base) and 422 (`PublishBlockedError`, whose body distinguishes gates an `ignoreWarnings` retry clears from gates needing a permission).
 - Clarified bandit scope: the GrowthBook REST API supports multi-armed bandit experiments and separate Enterprise beta Contextual Bandits, but the current experiment workflows operate standard A/B tests only and halt on either bandit type.
 
+### Added
+- `learnings` — search, read, and record Learnings, the durable conclusions a team has drawn across multiple experiments. Backed by the Learnings REST API added in [growthbook#5986](https://github.com/growthbook/growthbook/pull/5986): semantic search (`POST /api/v1/learnings/search`, ranked by meaning rather than keyword), list with `projectId` / `experimentId` / `tag` / `status` filters, and full CRUD. `experimentId` matches Learnings citing that experiment in either direction, supporting or contradicting.
+  - `experiment-design` now hands off to it before designing, so a settled question isn't re-tested; `experiment-analyze` hands off after a result that generalizes, so the conclusion outlives the experiment.
+  - Documents only what the REST API exposes. The in-app AI flows that *discover* Learnings across experiments and *refresh* one against newer experiments are app-only routes, so the skill points users at the Learnings page rather than attempting a call that would 404.
+  - Enterprise-gated: create, update, and search need a plan including Learnings, and search additionally needs AI enabled.
+  - Treats an empty corpus as the normal starting state rather than a finding: most orgs have no Learnings yet, so an empty search routes to `experiment-brainstorm` / `experiment-analyze` for the experiment record instead of reporting that nothing is known.
+- `metric-create` — create a fact metric, and the fact table underneath it when one does not exist yet. Covers all seven metric types (`proportion`, `retention`, `mean`, `quantile`, `ratio`, `dailyParticipation`, and `funnel`), row filters, and quantile/funnel settings. Stops at the metric definition; analysis settings inherit organization defaults.
+
 ### Changed
+- `metric-search` — metric creation now routes to the `metric-create` workflow instead of the GrowthBook UI.
+- README — "No metric or datasource creation" narrowed to datasource creation and analysis tuning, now that fact tables and fact metrics are covered.
 - Experiment skills now use the filtering/sorting params added to `GET /api/v1/experiments` in [growthbook#6418](https://github.com/growthbook/growthbook/pull/6418) — `q`, `owner`, `result`, `tag`, `implementationType`, `metricId`, `bandits`, `archived`, `sortBy`, `sortOrder` (on Cloud now; self-hosted needs a release later than v5.0.0):
   - `experiment-brainstorm` pulls history newest-first via `sortBy=dateCreated&sortOrder=desc` (previously the API's fixed oldest-first order silently grounded proposals in the oldest experiments on multi-page orgs), and scopes pulls with `tag` / `projectId` / `owner` / `result` / `metricId` / `implementationType` when the user narrows the ask, plus optional `bandits=false` so per-arm bandit results don't distort the win-rate tally. Corrected the page-size claim: `limit` caps at 100, not 50.
   - `experiment-analyze` and `experiment-stop` gain a resolve-by-name entry point (`?q=<text>`, matching name / tracking key / description / hypothesis) for when the user doesn't have the experiment ID, plus a guardrail documenting that `q` rejects negation and comparison operators with a 400.

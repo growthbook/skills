@@ -1,20 +1,20 @@
 ---
 name: experiments
-description: Design, launch, analyze, and stop standard GrowthBook A/B tests. Use when the user mentions an experiment, A/B test, split test, variation, hypothesis, sample size, goal or guardrail metric, SRM, chance to win, lift, or declaring a winner. Also use for multi-armed or contextual bandit requests, but only to identify them and direct the user to GrowthBook UI — these workflows do not operate bandits. For feature-flag work — creating flags, targeting rules, rollouts, kill switches, or publishing drafts — use feature-flags. For charting product data or browsing metrics, use analytics. For first-time API key configuration, use gb-setup.
+description: Design, launch, analyze, and stop GrowthBook A/B tests, and search or record durable Learnings across experiments. Use for experiments, split tests, variations, hypotheses, sample size, guardrail metrics, SRM, chance to win, lift, declaring a winner, "what have we learned", "have we tested this before", or "record this learning". For bandits, identify them and direct the user to GrowthBook UI. For feature flags and rollouts, use feature-flags. For product analytics or metric catalog work, use analytics. For API key configuration, use gb-setup.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *), Bash(sleep *)
 ---
 
 # experiments
 
-Domain router for GrowthBook experiments. Each stage of the lifecycle lives in a reference file under `references/`. Read this router, pick the stage that matches where the user is, then read that one file and follow it.
+Domain router for GrowthBook experiments and the durable Learnings distilled from them. Each workflow lives in a reference file under `references/`. Read this router, pick the workflow that matches where the user is, then read that one file and follow it.
 
 Experiments use the **v1 API** (`/api/v1/experiments`). When a workflow also touches a feature flag, the flag calls are v2 — the reference file spells out which is which.
 
 All API calls go through the bundled helper. Under the Claude Code plugin install, it lives at `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call` (the plugin root). Under `npx skills install`, it lives at `scripts/gb-call` relative to this skill's directory. Resolve that path once and substitute it whenever a reference example says `gb-call`; do not assume `gb-call` is on `PATH`. It reads `GB_API_KEY` from the environment first, then falls back to `~/.config/growthbook/.env` (written by **gb-setup**); environment variables take precedence.
 
-## Pick a stage
+## Pick a workflow
 
-The lifecycle runs brainstorm → design → launch → analyze → stop. Enter wherever the user is.
+The experiment lifecycle runs brainstorm → design → launch → analyze → stop. `learnings` sits before design when checking prior knowledge and after analysis when evidence supports a durable conclusion.
 
 These workflows target `type: "standard"` experiments. GrowthBook's REST API also supports multi-armed bandit experiments and separate Enterprise beta Contextual Bandit resources, but neither lifecycle is implemented here. If the request is about either kind of bandit, identify it accurately and direct the user to GrowthBook UI; do not apply the standard-experiment workflows to it.
 
@@ -25,6 +25,7 @@ These workflows target `type: "standard"` experiments. GrowthBook's REST API als
 | `references/experiment-launch.md` | Create the experiment, prep or reuse the flag, wire the experiment-ref rule, and start it |
 | `references/experiment-analyze.md` | Read results — refresh the snapshot if stale, then interpret (read-only) |
 | `references/experiment-stop.md` | Stop a running experiment, optionally declare a winner and roll it out |
+| `references/learnings.md` | Search and read prior conclusions, or create, update, and delete curated Learnings across experiments |
 
 If the user has an idea but no hypothesis, start at `experiment-design`; it routes back to `experiment-brainstorm` when the idea needs grounding. If they hand you a name rather than an ID, `experiment-analyze` and `experiment-stop` both open with a resolve-by-name step.
 
@@ -44,10 +45,11 @@ This router deliberately carries no statistical guidance of its own. Interpretat
 - **`result` is the recorded result and survives a restart,** so `result=won` can return a running experiment. Pair it with `status=stopped`.
 - **`limit` caps at 100** on the experiments list.
 - **Show users the experiment name and link `<host>/experiment/<id>`,** not raw ids alone.
+- **An empty Learning corpus is not an empty experiment record.** Fall back to stopped-experiment history before concluding the team has no prior evidence.
 
 ## Read-only vs. write
 
-`experiment-brainstorm`, `experiment-design`, and `experiment-analyze` never write — brainstorm and design are proposal-only and must not POST an experiment into existence, and analyze must not stop or modify one. `experiment-launch` and `experiment-stop` are the only writers.
+`experiment-brainstorm`, `experiment-design`, and `experiment-analyze` never write — brainstorm and design are proposal-only and must not POST an experiment into existence, and analyze must not stop or modify one. `experiment-launch` and `experiment-stop` write experiment state. The `learnings` search/list paths are read-only; its create, update, and delete paths require explicit confirmation immediately before the write.
 
 ## Budget
 

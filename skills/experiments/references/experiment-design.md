@@ -104,6 +104,7 @@ Help the user produce an experiment spec that's actually launchable. Walk them t
 
 ## Handoffs
 
+- `references/learnings.md` — search what the team has already concluded before designing. Surface a Learning that settles or contradicts the hypothesis instead of re-testing it. An empty result means nothing has been curated, not that there is no relevant experiment history; fall through to `references/experiment-brainstorm.md`.
 - `references/experiment-launch.md` — consumes the spec and creates the draft experiment in GrowthBook.
 - Manual metric creation — if the primary metric doesn't exist yet, the user needs to create it in the GrowthBook UI at `<host>/metrics` (or `<host>/fact-tables` for fact metrics) before launching. No skill for that yet; derive `<host>` from `GB_API_URL` by swapping `api.` → `app.`.
 - `references/experiment-brainstorm.md` — if the user came in without a specific hypothesis, route back here to ground a new idea in past results.
