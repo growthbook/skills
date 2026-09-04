@@ -259,7 +259,7 @@ Ask only where the answer changes a block. Everywhere else, build something reas
 ## Guardrails
 
 - **One POST per dashboard.** Every block goes in the create call; the server runs each chart. Do not POST explorations first, and do not create the dashboard and then add tiles to it.
-- **Confirm before the POST.** A dashboard is organization-visible configuration. Show the payload, or a plain summary of it, and get a yes.
+- **Say what the dashboard will contain, then get a yes.** A dashboard is organization-visible configuration, and the payload is unreadable at a glance. Lead with the name and where it lands, then one bullet per tile — chart type, metric, timeframe — in the words the user would use. Someone who never opens the JSON should be able to tell you got it wrong.
 - **`explorerAnalysisId` is the server's to fill.** Omit it on every chart block you have not run yourself.
 - **A chart that cannot run fails the whole create.** The dashboard is not created, and the error names what went wrong. Fix that block's config and call again — there is no partial dashboard to clean up.
 - **One datasource per chart.** Every metric in a chart's `values[]`, every fact table, and every raw table must belong to that chart's own `config.datasource`, or the run fails. Different tiles may use different ones.

@@ -94,7 +94,7 @@ Changing `globalControls.dateRange` re-runs every chart enrolled in it, against 
 - **Send the full block list, or none.** A partial list deletes the tiles it omits.
 - **Keep `id`, `uid`, `organization`, and `layout` on every carried block.** A block sent without them is treated as new: it gets a fresh id, loses its position, and the tile the user had is gone.
 - **Drop `explorerAnalysisId` only when you changed that chart's `config`.** Dropping it otherwise re-runs a query for nothing; keeping it after a config change shows numbers that do not match the tile.
-- **Confirm before the PUT.** Name the tiles being removed explicitly — that is the change a user is most likely to have meant differently.
+- **Summarize the delta, then get a yes.** State what changes, not what the dashboard ends up as: tiles added, tiles removed, tiles whose config moved, and anything dashboard-wide such as the date range. Name removals explicitly — that is the change a user is most likely to have meant differently. Tiles carried through untouched need no mention.
 - **A chart that cannot run fails the whole update.** Nothing is written, and the error names the block. Fix that config and call again.
 - **Leave `experimentId` out of the update.** It is rejected there, and a general dashboard has none.
 - **Renaming a tile is not renaming the dashboard.** A block's `title` is the tile heading; the dashboard's `title` is the page name.
