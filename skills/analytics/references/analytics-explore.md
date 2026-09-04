@@ -230,7 +230,7 @@ For "break that down by country", "make it a bar chart", "last 90 days instead":
 - Cumulative charts (all others): never include a date dimension.
 - Defaults when the user doesn't specify: `line` for trends over time, `bar` for totals/breakdowns. Don't use `bigNumber` unless the user explicitly asks for a single-stat display.
 
-**Date ranges.** Valid `predefined` values: `today`, `last7Days`, `last30Days`, `last90Days`, `customLookback`, `customDateRange`. Anything else (e.g. `last14Days`) is a validation error — for 14 days use `{ "predefined": "customLookback", "lookbackValue": 14, "lookbackUnit": "day" }` (`lookbackUnit`: `hour`, `day`, `week`, or `month`). For explicit dates use `customDateRange` with `startDate`/`endDate` ISO strings.
+**Date ranges.** `predefined` is a closed list: `today`, `yesterday`, `last7Days`, `last30Days`, `last90Days`, `last12Months`, `lastCalendarYear`, `customLookback`, `customDateRange`. Any other name is a validation error, however natural it looks — `last14Days`, `last6Months` and `last3Months` are all rejected. Every window outside the list is `customLookback` with `lookbackValue` and `lookbackUnit` (`hour`, `day`, `week`, `month`): 14 days is `{ "predefined": "customLookback", "lookbackValue": 14, "lookbackUnit": "day" }`, six months is `lookbackValue: 6` with `lookbackUnit: "month"`. For explicit dates use `customDateRange` with `startDate`/`endDate` ISO strings.
 
 **Dimensions.** Two shapes:
 
@@ -255,7 +255,7 @@ Maximum 2 dimensions total (the date dimension counts); with more than one `valu
 - **Everything must live on the exploration's datasource.** All metrics in `values[]` (and the fact table, and the raw table) must belong to `config.datasource`, or the POST fails with a 400.
 - **SQL datasources only.** Mixpanel and Google Analytics datasources return "Datasource is not a SQL datasource". Filter them out during datasource selection.
 - **403 means missing `runQueries` permission** on the datasource for the token's user — not a bad key. Point the user at their PAT's role/scopes, or hand off to the **gb-setup** skill to switch tokens.
-- **`last14Days` is not a valid date range** — it's a natural guess by analogy with `last7Days`/`last30Days`, but the API rejects it. Any lookback outside the four fixed presets goes through `customLookback` (see Config rules).
+- **Do not invent a `predefined` name.** `last14Days`, `last6Months`, `last3Months` and the like are natural guesses by analogy with `last7Days`/`last30Days`, and the API rejects every one. Any window outside the fixed presets goes through `customLookback` (see Config rules).
 - **Stick to `date` + `dynamic` dimensions.** The validator also accepts `static` and `slice` dimension types and any `maxValues` number, but those are internal UI surface — unsupported configs render badly or fail downstream. Keep `maxValues` ≤ 20.
 - **Product Analytics Explorer is in Beta** — chart types and rules may shift between GrowthBook releases. If a config that matches this skill is rejected, trust the error message in `body.message` over this file, and stop after 3 similar failures with a plain explanation.
 - **Retry budget.** On a config error, fix and retry up to 3 times, then stop and explain. On 0 rows, retry once with a widened range or loosened filters before reporting "no data".
