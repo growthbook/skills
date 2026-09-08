@@ -49,7 +49,11 @@ Capture `title`, `projects`, `globalControls`, `comparison`, and the full `block
 
 ### 3. Apply the change
 
-Start from the blocks you just read and change only what was asked. For every block you are keeping, **send it back exactly as it came**, including `id`, `uid`, `organization`, `layout`, and `explorerAnalysisId`. That is what preserves the tile's identity, its position, and its last result.
+Start from the blocks you just read and change only what was asked. What you send for each one depends on whether you touched it:
+
+- **Unchanged block** → `{ "id": "dshblk_…" }`. The id alone keeps the tile exactly as saved — its config, its position, and its last result.
+- **Changed block** → the full block copied from the `GET`, with the requested change applied. Keep its `id` and `layout`.
+- **Changed a chart's `config`** → also drop that block's `explorerAnalysisId`, so the write re-runs it.
 
 | Change | What to do |
 | --- | --- |
