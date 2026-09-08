@@ -112,7 +112,8 @@ Returns on success:
   "truncated": false,
   "durationMs": 1234,
   "sql": "SELECT event_type, COUNT(*) as cnt FROM ... LIMIT 500",
-  "explorationUrl": "https://app.growthbook.io/product-analytics/explore/data-source?config=..."
+  "explorationUrl": "https://app.growthbook.io/product-analytics/explore/sql?config=...",
+  "explorationId": "ae_abc12345"
 }
 ```
 
@@ -154,9 +155,12 @@ If the query returned 0 rows, check your filters and date ranges before concludi
 
 ### 7. Include exploration link
 
-When `tableMetadata` was provided in step 5, the response includes an
-`explorationUrl` field. Always include this as a link in your reply so the user
-can view and interact with the data in the product analytics explorer.
+When `tableMetadata` was provided in step 5, the server creates a persisted
+exploration from the SQL results. The response includes `explorationUrl` (a
+link to the product analytics explorer) and `explorationId` (the exploration's
+database ID). Always include the `explorationUrl` as a link in your reply so
+the user can view and interact with the data in the explorer. The exploration
+also stores the executed SQL, visible in the explorer's "Rendered SQL" tab.
 
 If `explorationUrl` is absent (e.g. `tableMetadata` was omitted or the query
 involved joins across multiple tables), present the SQL results as text only.
