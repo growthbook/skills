@@ -109,7 +109,7 @@ Adding one chart to a five-tile dashboard is therefore five refs and one new blo
 
 An id that is not on the dashboard is rejected, so a mistyped ref fails the write instead of quietly dropping a tile.
 
-Changing `globalControls.dateRange` re-runs every chart enrolled in it, against the new range. A dashboard with many tiles is many warehouse queries, so change the date range only when that is what the user asked for.
+Changing `globalControls.dateRange` re-runs every chart enrolled in it, against the new range, and changing `comparison` re-runs every chart — a dashboard-wide comparison overrides each block's own. The write does that itself: a tile you carried by id comes back with fresh numbers, not the previous window. A dashboard with many tiles is many warehouse queries, so change either only when that is what the user asked for.
 
 ## Guardrails
 
