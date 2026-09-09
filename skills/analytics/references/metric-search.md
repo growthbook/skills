@@ -30,14 +30,23 @@ Search returns only resources supported by Product Analytics. If the user explic
 
 ### Path B — Lookup and detail ("find the revenue metric", "what's in the orders fact table?")
 
-Search by name, then use the selected match's stable `id`. To inspect what can be grouped or filtered, call the columns endpoint:
+Search by name, then use the selected match's stable `id`. When the user asks for its definition or an audit, fetch the selected resource's full model:
+
+```bash
+gb-call GET /api/v1/fact-metrics/fact__abc123
+gb-call GET /api/v1/fact-tables/ftb_abc123
+```
+
+For a metric, surface its type, numerator and denominator logic, aggregation, row and aggregate filters, inverse direction, and material analysis settings. For a fact table, surface its event definition, identifier types, SQL, and active columns. Do not fetch every full model during a broad inventory; use these detail calls after selecting a resource.
+
+To inspect what can be grouped or filtered in Product Analytics, call the columns endpoint:
 
 ```bash
 gb-call GET '/api/v1/product-analytics/columns?source=metric&metricIds=fact__abc123'
 gb-call GET '/api/v1/product-analytics/columns?source=fact_table&factTableId=ftb_abc123'
 ```
 
-For metrics, pass all selected IDs as a comma-separated `metricIds` query value. The response returns the intersection of usable columns, `userIdTypes`, per-metric `needsUnit` information, and a `unitNote`. For fact tables it returns usable columns, `userIdTypes`, and a `unitNote`. Surface these fields without inventing definition details the search and columns contracts do not return.
+For metrics, pass all selected IDs as a comma-separated `metricIds` query value. The response returns the intersection of usable columns, `userIdTypes`, per-metric `needsUnit` information, and a `unitNote`. For fact tables it returns usable columns, `userIdTypes`, and a `unitNote`. Keep these chartability fields distinct from the full definition returned by the detail endpoints.
 
 ### Path C — Chartability triage ("what can I chart?", pre-analytics audit)
 
@@ -52,10 +61,10 @@ Report the chartable set and hand off to `references/analytics-explore.md` to ac
 ## Guardrails
 
 - **Read-only.** Never POST, PUT, or DELETE from this skill. Route chart-running to `references/analytics-explore.md` and metric creation to `references/metric-create.md`.
-- **Use server-side Product Analytics search.** Pass an empty query to browse and short terms to filter. Paginate with `skip`/`limit`, and mind the 60 rpm rate limit.
+- **Use server-side Product Analytics search.** Pass an empty query to browse and short terms to filter. Its hard maximum is `limit=20`; never substitute a generic page size such as 50 or 100. Paginate with `skip`, and mind the 60 rpm rate limit.
 - **Treat 404s conservatively.** A 404 from `/product-analytics/search` means the server predates these workflow endpoints. On `/columns`, it can also mean the resource is missing or inaccessible. Surface the failure and stop; do not invent replacement paths or probe around access checks.
 - **Trust `official`.** The search response exposes the vetted-resource signal directly; prefer `official: true` when equivalent choices exist.
-- **Do not invent unavailable detail.** Search is a discovery contract, not the full metric or fact-table model. Report only returned fields, and use `/columns` for usable columns and units.
+- **Search is discovery, not definition detail.** Use the matching fact-metric or fact-table detail GET after selecting a resource for lookup or audit. Use `/columns` separately for Product Analytics columns and units.
 - **Never guess values.** This workflow does not query warehouse values because it is strictly read-only. If the user needs a concrete filter or breakdown value, hand off to `references/analytics-explore.md`, which must call `POST /column-values`.
 - **Legacy metrics are not chartable.** `/api/v1/metrics` entries work as experiment metrics but Product Analytics explorations only accept fact metrics. Don't promise a chart for one.
 - **IDs are stable handles; names aren't unique.** When handing off, pass the returned `id` and `explorerType`, not the display name.
@@ -64,6 +73,8 @@ Report the chartable set and hand off to `references/analytics-explore.md` to ac
 
 - `GET /api/v1/product-analytics/search` — search or browse chartable metrics and fact tables (`query`, `datasourceId`, `limit`, `skip`)
 - `GET /api/v1/product-analytics/columns` — usable columns and unit requirements (`source`, plus `factTableId` or comma-separated `metricIds`)
+- `GET /api/v1/fact-metrics/:id` — full fact-metric definition for lookup and audit
+- `GET /api/v1/fact-tables/:id` — full fact-table definition for lookup and audit
 - `GET /api/v1/data-sources` — datasource types for chartability triage
 
 ## Handoffs

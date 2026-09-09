@@ -37,7 +37,7 @@ gb-call GET /api/v1/data-sources
 - **1 datasource** → use it without asking, but say which one you're using.
 - **2+ datasources** → use the one the user named; otherwise ask which to use.
 
-Only SQL warehouse datasources work (Postgres, BigQuery, Snowflake, etc.). Mixpanel and Google Analytics datasources are rejected by the exploration endpoints.
+Only SQL warehouse datasources work (Postgres, BigQuery, Snowflake, etc.). Mixpanel and Google Analytics datasources are rejected by the exploration endpoints. Funnel exploration has a narrower warehouse allowlist; check Path D before offering one.
 
 ### 2. Pick the path
 
@@ -52,7 +52,7 @@ Prefer A over B when a fact metric exists — metrics carry curated logic that a
 
 ### Path A — metric exploration
 
-**A-1. Find the metric.** Use Product Analytics search with a short term; broaden it or try a synonym if needed:
+**A-1. Find the metric.** Use Product Analytics search with a short term; broaden it or try a synonym if needed. Its hard maximum is `limit=20`—never use 50 or 100:
 
 ```bash
 gb-call GET '/api/v1/product-analytics/search?query=signup&datasourceId=<ds_id>&limit=20&skip=0'
@@ -66,7 +66,7 @@ Use a match with `explorerType: "metric"` and capture its `id`, `name`, and `typ
 gb-call GET '/api/v1/product-analytics/columns?source=metric&metricIds=fact__abc123'
 ```
 
-Follow the returned `userIdTypes` and per-metric `needsUnit` fields. Use `userIdTypes[0]` whenever `needsUnit` is true and as the safe default for `mean`, `proportion`, `retention`, and `dailyParticipation`; use `null` for other metric types unless `needsUnit` says otherwise. If a row filter or concrete dimension value is needed, query the actual string-column values first:
+Follow the returned `userIdTypes`, per-metric `needsUnit`, and `unitNote` fields exactly. When `needsUnit` is true, set `unit` to a returned identifier type; when it is false, default to `null`. Do not override that result from the metric type alone—a ratio can require a unit. If the user explicitly asks for a per-unit mean but `/columns` returns no identifier types, fetch the full metric and its numerator fact table to resolve valid `userIdTypes`; never invent one. If a row filter or concrete dimension value is needed, query the actual string-column values first:
 
 ```bash
 echo '{"source":"metric","metricIds":["fact__abc123"],"columns":["country"],"searchTerm":"US","limit":20}' \
@@ -226,6 +226,8 @@ echo '<config-json>' | gb-call POST '/api/v1/product-analytics/data-source-explo
 
 Search for each step's fact table, then call `/columns` for every selected table. Choose a single identifier present in every table's `userIdTypes`. Use `/column-values` before adding any concrete row-filter value to a step.
 
+Funnel exploration is supported only for `postgres`, `clickhouse`, `growthbook_clickhouse`, `bigquery`, `snowflake`, `athena`, `presto`, `databricks`, and `redshift` datasources. MySQL, MSSQL, and Vertica are SQL datasources but are rejected for funnels. If the selected datasource is outside the allowlist, explain that limitation and stop rather than submitting the config.
+
 Each step is `{ "name", "factTableId", "rowFilters", "optional", "conversionWindow" }`. Keep the user's order. `conversionWindow` is `null` or `{ "unit": "hours" | "days" | "weeks", "value": <positive number> }`.
 
 ```bash
@@ -321,13 +323,14 @@ Maximum 2 dimensions total (the date dimension counts); with more than one `valu
 - **At most one successful chart per user turn.** Discovery calls, value lookups, polling, config-error retries, and one empty-result retry are permitted. After one non-empty exploration succeeds, report it and stop.
 - **Explorations run real warehouse queries.** They cost compute and can take tens of seconds. Default to `cache=preferred` (reuses a recent identical run); use `cache=never` only when the user explicitly wants fresh numbers. Run explorations one at a time and mind the 60 rpm API rate limit.
 - **Cache matching ignores `chartType`.** Re-rendering the same data as a different chart type is a free cache hit — never re-query just to restyle.
-- **Always set `unit` explicitly, on each `dataset.values[]` entry.** Follow the `/columns` response fields `metrics[].needsUnit`, `userIdTypes`, and `unitNote`. It belongs to the value, not the config, and a `unit` on the config is rejected. The server does not backfill a missing unit: a `null` unit on a `mean`/`proportion`/`retention`/`dailyParticipation` metric silently switches the SQL to event-level aggregation instead of erroring — wrong numbers, no warning. Set `userIdTypes[0]` for those types; `null` for `ratio`/`quantile`. A unit not in the fact table's `userIdTypes` fails the run.
+- **Always set `unit` explicitly, on each `dataset.values[]` entry.** Follow `/columns`: use a returned `userIdTypes` entry when that metric's `needsUnit` is true, otherwise default to `null`. Do not hardcode by metric type—a distinct-user ratio can require a unit. For a user-requested per-unit mean, resolve a valid identifier from the full metric's numerator fact table when `/columns` does not return one. The server does not backfill a missing unit, and a unit not configured on the relevant fact table fails the run.
 - **`proportion`, `retention`, and `dailyParticipation` metrics return `numerator == denominator` in a standalone exploration.** These types emit one row per qualifying unit (`CASE WHEN filter THEN 1 ELSE NULL`, then `MAX` per unit, then `SUM AS numerator` / `COUNT AS denominator`), so the ratio is structurally ~1.0 (100%) — outside an experiment there is no exposure population to divide against. Read the **`numerator` as a distinct-unit count** ("users who did X that day"), never the ratio as a rate. `showAs: per_unit` degenerates to ~1 for these and has no effect (the server's own `metricHasMeaningfulPerUnit` returns false for them). `mean` is the exception — its denominator is a real unit count, so per-unit is a true average; `ratio`/`quantile` emit no `COUNT` denominator at all.
 - **Never guess column values.** Call `POST /api/v1/product-analytics/column-values` before using a concrete string value in a filter or breakdown. It executes a warehouse query, supports up to five columns, and can return warnings for non-string or missing columns. If no exact value is returned after one broader lookup, ask the user instead of inventing one.
 - **Use Product Analytics search as the chartable catalog.** Pick returned resources by `explorerType`; do not substitute a legacy experiment metric or an unreturned name.
 - **Everything must live on the exploration's datasource.** All metrics in `values[]` (and the fact table, and the raw table) must belong to `config.datasource`, or the POST fails with a 400.
 - **SQL datasources only.** Mixpanel and Google Analytics datasources return "Datasource is not a SQL datasource". Filter them out during datasource selection.
-- **403 means missing `runQueries` permission** on the datasource for the token's user — not a bad key. Point the user at their PAT's role/scopes, or hand off to the **gb-setup** skill to switch tokens.
+- **Funnels support only a subset of SQL warehouses.** Use the Path D allowlist; MySQL, MSSQL, and Vertica are rejected even though other exploration types can use them.
+- **403 means the token's user lacks the relevant datasource query permission** — `runQueries` for metric, fact-table, funnel, and column-value queries; `runSqlExplorerQueries` for data-source exploration. It is not a bad key. Point the user at their PAT's role/scopes, or hand off to the **gb-setup** skill to switch tokens.
 - **Do not invent a `predefined` name.** `last14Days`, `last6Months`, `last3Months` and the like are natural guesses by analogy with `last7Days`/`last30Days`, and the API rejects every one. Any window outside the fixed presets goes through `customLookback` (see Config rules).
 - **Stick to `date` + `dynamic` dimensions.** The validator also accepts `static` and `slice` dimension types and any `maxValues` number, but those are internal UI surface — unsupported configs render badly or fail downstream. Keep `maxValues` ≤ 20.
 - **Product Analytics Explorer is in Beta** — chart types and rules may shift between GrowthBook releases. If a config that matches this skill is rejected, trust the error message in `body.message` over this file, and stop after 3 similar failures with a plain explanation.
@@ -339,6 +342,8 @@ Maximum 2 dimensions total (the date dimension counts); with more than one `valu
 - `GET /api/v1/product-analytics/search` — search or browse chartable metrics and fact tables
 - `GET /api/v1/product-analytics/columns` — get usable columns and unit requirements
 - `POST /api/v1/product-analytics/column-values` — query actual string-column values; read-only but incurs warehouse cost
+- `GET /api/v1/fact-metrics/:id` — resolve a selected metric's full definition when per-unit semantics require its fact table
+- `GET /api/v1/fact-tables/:id` — resolve valid identifier types for a user-requested per-unit mean
 - `GET /api/v1/data-sources/:id/information-schema` — browse warehouse databases/schemas/tables
 - `GET /api/v1/information-schema-tables/:tableId` — raw table columns + datatypes
 - `POST /api/v1/product-analytics/metric-exploration` — run a metric chart
