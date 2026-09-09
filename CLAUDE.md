@@ -56,7 +56,7 @@ scripts/gb-call                          ← canonical helper; Claude plugin inv
 .cursor-plugin/                          ← plugin.json (Cursor manifest)
 ```
 
-Four domains: `feature-flags` (17 workflows), `experiments` (5), `analytics` (3), and `gb-setup` (no `references/` — it's a single workflow).
+Four domains: `feature-flags` (17 workflows), `experiments` (6), `analytics` (3), and `gb-setup` (no `references/` — it's a single workflow).
 
 Skills are pure markdown. The helper is the only executable code in the plugin. This is intentional — the v0.2.0 commit (`daac766`) pivoted away from MCP to keep the surface that small.
 
@@ -205,6 +205,8 @@ Five workflows must never mutate anything:
 
 `analytics-explore` is a third category worth naming: it writes no GrowthBook configuration but does execute real warehouse queries, which cost the user money. Don't treat "writes nothing" as "free."
 
+`learnings` mixes read and write paths: search/list/detail are read-only, while create/update/delete require explicit user confirmation immediately before the request.
+
 Everything else writes. Read-only and proposal-only workflows must *say so* in their intro and enforce it in Guardrails ("Propose, do not create. Never POST to ..."). **The boundary is in the content, not the tooling** — every workflow in a domain inherits the same router `allowed-tools`, so nothing stops a read-only workflow from writing except the words in its file. That's exactly why those words have to be explicit, and it matters more under a router than it did when each skill had its own grant.
 
 ## Crossing domains
@@ -267,7 +269,7 @@ Each of these gets added only when a real skill needs it. `experiment-analyze` w
 
 Workflow names map to **what the user is doing**, not to API endpoints:
 
-- Experiments: `brainstorm → design → launch → analyze → stop`
+- Experiments: `learnings → brainstorm → design → launch → analyze → stop → learnings`
 - Flags: `create → toggle → targeting → ramp`/`monitoring → cleanup`, with `revisions → review → publish` running underneath all of them
 - Analytics: `metric-search → metric-create → analytics-explore`
 
