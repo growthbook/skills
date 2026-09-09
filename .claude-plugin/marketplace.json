@@ -5,7 +5,7 @@
     "email": "support@growthbook.io",
     "url": "https://growthbook.io"
   },
-  "description": "Agent skills for GrowthBook — the full feature flag lifecycle (create, target, schedule, ramp, monitor, publish, clean up), A/B experiment management (brainstorm, design, launch, analyze, stop), and product analytics (metric discovery, charting).",
+  "description": "Agent skills for GrowthBook — the full feature flag lifecycle (create, target, schedule, ramp, monitor, publish, clean up), A/B experiment management (brainstorm, design, launch, analyze, stop), and product analytics (metric discovery, charting, dashboards).",
   "plugins": [
     {
       "name": "growthbook",
