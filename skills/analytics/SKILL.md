@@ -41,7 +41,7 @@ One chart or several? A single question gets one chart from `analytics-explore`.
 - **Never re-send a rejected call unchanged.** A 400 is deterministic: the same body gets the same error, so a retry that has not changed the field the message names only spends the user's turn. Read `body.message`, fix exactly what it names, and send it once more. If the message does not say what a valid value would be, or the same field is rejected twice, stop there — say which field failed and what you tried, and ask the user rather than guessing a third time. Ask about **that field**: a validation error names the field it rejected, and a question about a different one (a column name, a metric choice) cannot resolve it, so the answer arrives and the same call fails again.
 - **Restyling a chart is free.** Cache matching ignores `chartType`, so a different chart type on the same query is a cache hit. Never re-query just to restyle.
 - **A dashboard's chart blocks carry a `config`, not a result.** The create and update calls run every chart server-side, so never POST an exploration first just to get an id for a tile.
-- **An update replaces a dashboard's whole block list.** Read the dashboard in the same turn you write it, and list every tile being kept — but carry an unchanged one as `{ "id": "dshblk_…" }` rather than copying it back in full.
+- **An update replaces a dashboard's whole block list.** Read the dashboard in the same turn you write it, and list every tile being kept — but carry an unchanged one as `{ "id": "dshblk_…" }` rather than copying it back in full, and list each id at most once.
 - **Dashboards are not scoped to a datasource** the way metrics and explorations are, but every chart on one is.
 
 ## Read-only vs. write
