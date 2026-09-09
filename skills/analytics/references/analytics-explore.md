@@ -232,7 +232,7 @@ For "break that down by country", "make it a bar chart", "last 90 days instead":
 
 **Date ranges.** `predefined` is a closed list: `today`, `yesterday`, `last7Days`, `last30Days`, `last90Days`, `last12Months`, `lastCalendarYear`, `customLookback`, `customDateRange`. Any other name is a validation error, however natural it looks — `last14Days`, `last6Months` and `last3Months` are all rejected. Every window outside the list is `customLookback` with `lookbackValue` and `lookbackUnit` (`hour`, `day`, `week`, `month`): 14 days is `{ "predefined": "customLookback", "lookbackValue": 14, "lookbackUnit": "day" }`, six months is `lookbackValue: 6` with `lookbackUnit: "month"`. For explicit dates use `customDateRange` with `startDate`/`endDate` ISO strings.
 
-**Dimensions.** Two shapes:
+**Dimensions.** Two shapes. `dimensionType` names the *kind* of dimension, not the field you are grouping by — `"dimension"` is not one of its values, and the column goes in `column`:
 
 - Date: `{ "dimensionType": "date", "column": null, "dateGranularity": "auto" }` — keep `auto` unless the user asks for a specific granularity (`hour`, `day`, `week`, `month`, `year`).
 - Breakdown: `{ "dimensionType": "dynamic", "column": "<string column>", "maxValues": 5 }` — shows the top N values, `maxValues` 1–20.
@@ -258,7 +258,7 @@ Maximum 2 dimensions total (the date dimension counts); with more than one `valu
 - **Do not invent a `predefined` name.** `last14Days`, `last6Months`, `last3Months` and the like are natural guesses by analogy with `last7Days`/`last30Days`, and the API rejects every one. Any window outside the fixed presets goes through `customLookback` (see Config rules).
 - **Stick to `date` + `dynamic` dimensions.** The validator also accepts `static` and `slice` dimension types and any `maxValues` number, but those are internal UI surface — unsupported configs render badly or fail downstream. Keep `maxValues` ≤ 20.
 - **Product Analytics Explorer is in Beta** — chart types and rules may shift between GrowthBook releases. If a config that matches this skill is rejected, trust the error message in `body.message` over this file, and stop after 3 similar failures with a plain explanation.
-- **Retry budget.** On a config error, fix and retry up to 3 times, then stop and explain. On 0 rows, retry once with a widened range or loosened filters before reporting "no data".
+- **Retry budget.** On a config error, change the field the message names and retry once — never resend the config unchanged, and stop and ask when the same field is rejected twice or the message doesn't say what a valid value is (see the router's shared conventions). On 0 rows, retry once with a widened range or loosened filters before reporting "no data".
 
 ## Endpoints used
 

@@ -165,6 +165,16 @@ The response is `{ "dashboard": { "id": "dash_...", ... } }`. Report what is on 
 
 `datasource`, `dimensions`, `chartType`, `dateRange`, `type`, and `dataset` are all required. `dimensions: []` when the tile has no breakdown — leaving it out fails the write.
 
+**`dimensions` takes one of exactly two shapes**, copied literally:
+
+| What the tile does | The dimension to send |
+| --- | --- |
+| Trend over time | `{ "dimensionType": "date", "column": null, "dateGranularity": "auto" }` |
+| Break down by a column | `{ "dimensionType": "dynamic", "column": "browser", "maxValues": 5 }` |
+| Neither (single total) | `[]` |
+
+`dimensionType` is the **kind** of dimension, never the thing you are grouping by: `"dimension"`, `"browser"`, `"user"` and `"column"` are all rejected, and `"dimension"` is the guess the API sees most. `maxValues` is required on `dynamic` (1–20) and meaningless on `date`; `dateGranularity` is required on `date` and meaningless on `dynamic`. The validator also accepts `static` and `slice` — internal UI surface, don't emit them.
+
 A `metric-exploration` config, the one most tiles use:
 
 ```json
@@ -181,6 +191,12 @@ A `metric-exploration` config, the one most tiles use:
     ]
   }
 }
+```
+
+The same tile broken down by browser rather than over time is that config with `"chartType": "bar"` and:
+
+```json
+"dimensions": [{ "dimensionType": "dynamic", "column": "browser", "maxValues": 5 }]
 ```
 
 A big-number tile is that same config with `"chartType": "bigNumber"` and `"dimensions": []`. There is no `metric` shorthand — one metric is a `dataset.values` array of length one, and several big numbers on one tile are several entries in it.
@@ -285,7 +301,7 @@ Ask only where the answer changes a block. Everywhere else, build something reas
 - **One POST per dashboard.** Every block goes in the create call; the server runs each chart. Do not POST explorations first, and do not create the dashboard and then add tiles to it.
 - **Say what the dashboard will contain, then get a yes.** A dashboard is organization-visible configuration, and the payload is unreadable at a glance. Lead with the name and where it lands, then one bullet per tile — chart type, metric, timeframe — in the words the user would use. Someone who never opens the JSON should be able to tell you got it wrong.
 - **`explorerAnalysisId` is the server's to fill.** Omit it on every chart block you have not run yourself.
-- **A chart that cannot run fails the whole create.** The dashboard is not created, and the error names what went wrong. Fix that block's config and call again — there is no partial dashboard to clean up.
+- **A chart that cannot run fails the whole create.** The dashboard is not created, and the error names the block and the field, so there is no partial dashboard to clean up. Change what the message names and call again once; a payload that repeats a rejected field fails identically. If you cannot tell from the message what a valid value is, stop and ask rather than resending — a dashboard is many blocks, and guessing one field at a time burns a real query per attempt.
 - **One datasource per chart.** Every metric in a chart's `values[]`, every fact table, and every raw table must belong to that chart's own `config.datasource`, or the run fails. Different tiles may use different ones.
 - **Always set `unit` explicitly** on each `dataset.values[]` entry, never on the config, which rejects it: `userIdTypes[0]` for `mean`, `proportion`, `retention`, and `dailyParticipation`; `null` for `ratio` and `quantile`. A missing unit is not backfilled — it silently switches to event-level aggregation.
 - **A date range's `predefined` comes from the closed list in the router's shared conventions.** Anything outside it is `customLookback` with `lookbackValue` and `lookbackUnit` (`hour`, `day`, `week`, `month`) — six months is `{ "predefined": "customLookback", "lookbackValue": 6, "lookbackUnit": "month" }`. This holds for `globalControls.dateRange` and each block's `config.dateRange`.
