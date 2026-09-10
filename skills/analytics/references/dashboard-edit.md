@@ -53,7 +53,7 @@ Start from the blocks you just read and change only what was asked. What you sen
 
 - **Unchanged block** → `{ "id": "dshblk_…" }`. The id alone keeps the tile exactly as saved — its config, its position, and its last result.
 - **Changed block** → the full block copied from the `GET`, with the requested change applied. Keep its `id` and `layout`.
-- **Changed a chart's `config`** → also drop that block's `explorerAnalysisId`, so the write re-runs it.
+- **Changed a chart's `config`** → also drop that block's `explorerAnalysisId`, so the write re-runs it. Leave `comparisonExplorerAnalysisId` alone either way — the write discards whatever you send and keeps only its own comparison run, so a copied one can never end up beside fresh primary numbers.
 
 | Change | What to do |
 | --- | --- |
@@ -116,13 +116,14 @@ These re-runs are best-effort, unlike the blocks you sent in full. A carried til
 ## Guardrails
 
 - **Read before you write.** Always `GET` the dashboard in the same turn as the `PUT`. A block list built from an earlier read, or from the create call you made, can be stale.
+- **A `409` means someone edited the dashboard while your write was in flight.** Nothing was saved. It is the one error a bare retry cannot fix — the block list you are holding is built from a version that no longer exists, so re-sending it would clobber their change. `GET` the dashboard again, re-apply the user's change to the new block list, and tell them the dashboard moved under you before writing again. If it conflicts twice, stop and say someone else is editing it.
 - **Send the full block list, or none.** A partial list deletes the tiles it omits.
 - **Carry an unchanged tile by id alone, and each id at most once.** `{ "id": "dshblk_…" }` keeps it exactly as saved; a repeated id is rejected. When you do send a block in full because you changed it, keep its `id` and `layout` — a block sent without an id is treated as new, so it gets a fresh one, loses its position, and the tile the user had is gone.
 - **Drop `explorerAnalysisId` only when you changed that chart's `config`.** Dropping it otherwise re-runs a query for nothing; keeping it after a config change shows numbers that do not match the tile.
 - **Summarize the delta, then get a yes.** State what changes, not what the dashboard ends up as: tiles added, tiles removed, tiles whose config moved, and anything dashboard-wide such as the date range. Name removals explicitly — that is the change a user is most likely to have meant differently. Tiles carried through untouched need no mention.
 - **The closed `predefined` list applies twice here**: to `globalControls.dateRange` and to each block's `config.dateRange`. The names are in the router's shared conventions; anything outside them is `customLookback`, so six months is `{ "predefined": "customLookback", "lookbackValue": 6, "lookbackUnit": "month" }` in both places.
 - **A chart you sent in full and cannot run fails the whole update.** Nothing is written, and the error names the block. Fix that config and call again. A tile you carried by id is the other case: it is only re-run when a dashboard-wide setting changed, and a failure there is logged server-side rather than returned, leaving the tile on its previous result.
-- **A failed comparison never fails a write.** Only the primary query does. A chart whose compare-to-previous-period run fails is saved without the comparison — including a carried tile, whose previous comparison is dropped rather than left pointing at the window before the new one — so a tile can come back showing a single series where the user asked for two.
+- **A failed comparison never fails a write, and never leaves a stale one behind.** Only the primary query does. A chart whose compare-to-previous-period run fails — or whose comparison you just turned off — is saved with no comparison at all rather than the previous run's, so a tile can come back showing a single series where the user asked for two.
 - **Leave `experimentId` out of the update.** It is rejected there, and a general dashboard has none.
 - **Renaming a tile is not renaming the dashboard.** A block's `title` is the tile heading; the dashboard's `title` is the page name.
 
@@ -130,7 +131,7 @@ These re-runs are best-effort, unlike the blocks you sent in full. A carried til
 
 - `GET /api/v1/dashboards` — list dashboards
 - `GET /api/v1/dashboards/:id` — read one, including its blocks
-- `PUT /api/v1/dashboards/:id` — write the change
+- `PUT /api/v1/dashboards/:id` — write the change (`409` if the dashboard changed since your `GET`)
 - `DELETE /api/v1/dashboards/:id` — delete a dashboard, when the user explicitly asks for that
 - `GET /api/v1/fact-metrics` and `GET /api/v1/fact-tables/:id` — when the change needs a metric or column the conversation has not resolved
 
