@@ -1,6 +1,6 @@
 ---
 name: analytics
-description: Chart GrowthBook product data, build Analytics dashboards, and manage the metric catalog — run Product Analytics explorations, save charts together on a dashboard, search metrics and fact tables, or create fact metrics and their fact tables. Use for "show me signups by country", "chart daily active users", "how many orders last week", "build me a dashboard", "put these metrics on a dashboard", "add a chart to this dashboard", "set up reporting for X", "find our revenue metric", "what fact tables exist", "create a metric", or "define a metric on the orders table". For an A/B test's results or choosing experiment metrics, use experiments. For feature flags, use feature-flags. For first-time API key configuration, use gb-setup.
+description: Chart GrowthBook product data, build Analytics dashboards, manage the metric catalog, or query the warehouse directly — run Product Analytics explorations, save charts together on a dashboard, search metrics and fact tables, create fact metrics and their fact tables, or fall back to ad-hoc SQL. Use for "show me signups by country", "chart daily active users", "how many orders last week", "build me a dashboard", "put these metrics on a dashboard", "add a chart to this dashboard", "set up reporting for X", "find our revenue metric", "what fact tables exist", "create a metric", "define a metric on the orders table", "what tables contain user data", "run a SQL query", or any "show me / chart / plot / how many" question about product data. For an A/B test's results or choosing experiment metrics, use experiments. For feature flags, use feature-flags. For first-time API key configuration, use gb-setup.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *), Bash(sleep *)
 ---
 
@@ -21,10 +21,13 @@ All API calls go through the bundled helper. Under the Claude Code plugin instal
 | `references/analytics-explore.md` | Actually run a chart and report the numbers plus a deep link                                                                |
 | `references/dashboard-create.md`  | Build a new dashboard — several charts saved together on one page (writes a dashboard)                                     |
 | `references/dashboard-edit.md`    | Change a dashboard that already exists: add or remove a chart, swap a metric, change the timeframe, rename it               |
+| `references/sql-query.md`         | Run ad-hoc SQL against the warehouse when no metric or exploration can answer the question (last resort)                     |
 
 When the user names a metric you have not resolved yet, read `metric-search.md` first. It hands `analytics-explore` or `metric-create` a stable definition. When they already named something concrete and just want the numbers, go straight to `analytics-explore.md`.
 
 One chart or several? A single question gets one chart from `analytics-explore`. "Track", "monitor", "reporting", or two or more things to watch together means a dashboard. Route on whether the dashboard exists: no id yet is `dashboard-create`, an id is `dashboard-edit`.
+
+Use `sql-query.md` only when the question can't be answered with existing metrics or the exploration config — custom joins, unmodeled tables, or aggregations the exploration can't express.
 
 ## Shared conventions
 
@@ -49,7 +52,7 @@ One chart or several? A single question gets one chart from `analytics-explore`.
 
 ## Read-only vs. write
 
-`metric-search` is strictly read-only. `analytics-explore` runs warehouse queries but changes no GrowthBook configuration — it does not create metrics, fact tables, or dashboards. `metric-create` writes organization-visible fact-table and fact-metric definitions, and `dashboard-create` / `dashboard-edit` write dashboards; all three must summarize the change in plain language and get confirmation before each write.
+`metric-search` is strictly read-only. `analytics-explore` runs warehouse queries but changes no GrowthBook configuration — it does not create metrics, fact tables, or dashboards. `sql-query` is similar: it never mutates warehouse data, but it executes potentially costly queries and persists a GrowthBook exploration object from the results. `metric-create` writes organization-visible fact-table and fact-metric definitions, and `dashboard-create` / `dashboard-edit` write dashboards; all three must summarize the change in plain language and get confirmation before each write.
 
 Note that explorations execute real warehouse queries, so they cost the user money and time even though they write nothing — and a dashboard write runs one per chart block. Scope them the way the reference files describe rather than fanning out speculatively.
 
