@@ -52,7 +52,7 @@ Use `sql-query.md` only when the question can't be answered with existing metric
 
 ## Read-only vs. write
 
-`metric-search` is strictly read-only. `analytics-explore` runs warehouse queries but changes no GrowthBook configuration — it does not create metrics, fact tables, or dashboards. `metric-create` writes organization-visible fact-table and fact-metric definitions, and `dashboard-create` / `dashboard-edit` write dashboards; all three must summarize the change in plain language and get confirmation before each write.
+`metric-search` is strictly read-only. `analytics-explore` runs warehouse queries but changes no GrowthBook configuration — it does not create metrics, fact tables, or dashboards. `sql-query` is similar: it never mutates warehouse data, but it executes potentially costly queries and persists a GrowthBook exploration object from the results. `metric-create` writes organization-visible fact-table and fact-metric definitions, and `dashboard-create` / `dashboard-edit` write dashboards; all three must summarize the change in plain language and get confirmation before each write.
 
 Note that explorations execute real warehouse queries, so they cost the user money and time even though they write nothing — and a dashboard write runs one per chart block. Scope them the way the reference files describe rather than fanning out speculatively.
 

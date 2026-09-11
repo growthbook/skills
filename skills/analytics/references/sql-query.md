@@ -71,7 +71,7 @@ Up to 5 tables per request. Column descriptions are enriched from matching fact 
 **You MUST call this before filtering on any column value.** Never guess enum spellings, date formats, or null patterns.
 
 ```bash
-echo '{"table": "analytics.public.events", "columns": ["event_type", "country"], "limit": 20}' | gb-call POST /api/v1/data-sources/<ds_id>/sql/preview-values -
+echo '{"databaseName": "analytics", "tableSchema": "public", "tableName": "events", "columns": ["event_type", "country"], "limit": 20}' | gb-call POST /api/v1/data-sources/<ds_id>/sql/preview-values -
 ```
 
 Returns `{ table, columns, rows: [...], rowCount }`.
@@ -119,7 +119,7 @@ Returns on success:
 }
 ```
 
-Returns when confirmation is needed (large queries on cost-threshold datasources):
+Returns when confirmation is needed (large queries on cost-threshold datasources, or when cost estimation is unavailable):
 ```json
 {
   "status": "confirmation_required",
@@ -130,9 +130,11 @@ Returns when confirmation is needed (large queries on cost-threshold datasources
 }
 ```
 
+This response also appears when the datasource does not support cost estimation (any warehouse other than BigQuery). In that case `estimatedBytesProcessed` is `0` and `estimatedCostUsd` is absent — the server requires confirmation because it cannot evaluate the threshold.
+
 In the GrowthBook app, the confirmation is handled automatically by the chat UI — the user sees a confirmation card with the cost details and clicks to approve or cancel. You do not need to handle this response in-app.
 
-For external agents: when you get `confirmation_required`, show the user the estimated scan size (from `estimatedBytesProcessed`), the estimated cost (from `estimatedCostUsd`), and ask whether to proceed. If they confirm, re-call with `confirm: true`:
+For external agents: when you get `confirmation_required`, show the user the message and any available cost details, and ask whether to proceed. If they confirm, re-call with `confirm: true`:
 ```bash
 echo '{"sql": "...", "purpose": "...", "confirm": true}' | gb-call POST /api/v1/data-sources/<ds_id>/sql/run-query -
 ```
