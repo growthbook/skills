@@ -33,11 +33,13 @@ SQL queries are scoped to one datasource. **Always ask the user which datasource
 gb-call GET /api/v1/data-sources
 ```
 
-- **0 datasources** → tell the user none is configured and stop.
-- **1 datasource** → use it without asking.
-- **2+ datasources** → always ask which to use, even if a datasource hint is present.
+Filter the response to SQL warehouse datasources only (Postgres, BigQuery, Snowflake, etc.) — Mixpanel and Google Analytics datasources cannot use the `/sql/*` endpoints. Then branch on the filtered count:
 
-Only SQL warehouse datasources work (not Mixpanel or Google Analytics). Capture the datasource `id` for all subsequent calls.
+- **0 SQL datasources** → tell the user none is configured and stop.
+- **1 SQL datasource** → use it without asking.
+- **2+ SQL datasources** → always ask which to use, even if a datasource hint is present.
+
+Capture the selected datasource's `id` for all subsequent calls.
 
 ### 2. Discover tables
 

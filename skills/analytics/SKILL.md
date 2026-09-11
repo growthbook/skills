@@ -58,7 +58,6 @@ Note that explorations execute real warehouse queries, so they cost the user mon
 
 ## Handoffs
 
-- The **ask-data** skill — when no metric or exploration can answer the question and the user needs direct SQL against the warehouse (custom joins, unmodeled tables, complex aggregations). Try `metric-search` and `analytics-explore` first.
 - The **experiments** skill — when the question is an A/B test readout, or when a chart surfaces something worth testing.
 - The **feature-flags** skill — when the user pivots to shipping or gating the thing the data is about.
 - **gb-setup** — when `gb-call` reports a missing or invalid `GB_API_KEY`.
