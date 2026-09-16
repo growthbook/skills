@@ -59,7 +59,7 @@ Turn the metrics and fact tables you already use for experimentation into ad-hoc
 
 ### `gb-setup`
 
-Walks you through your API key and (self-hosted) API URL. Validates against the live API and writes `~/.config/growthbook/.env` with `chmod 600`. Re-run anytime to update.
+Walks you through your API key and, for self-hosted installations, the API and app origins. Validates against the live API and writes `~/.config/growthbook/.env` with `chmod 600`. Re-run anytime to update.
 
 ## Install
 
@@ -88,13 +88,14 @@ The quickest path is to run the setup skill:
 /growthbook:gb-setup
 ```
 
-It walks you through your API key and (for self-hosted) your API URL — then validates against the live API and writes `~/.config/growthbook/.env` with `chmod 600`. Every other skill reads that file automatically.
+It walks you through your API key and (for self-hosted) your API and app origins — then validates against the live API and writes `~/.config/growthbook/.env` with `chmod 600`. Every other skill reads that file automatically.
 
 **Prefer shell-rc?** You can export the variables instead. The skills read environment variables first; the file is only consulted when an env var is unset.
 
 ```bash
 export GB_API_KEY=<your-key>             # required: PAT or Secret Key
 export GB_API_URL=https://api.your-host  # self-hosted only
+export GB_APP_URL=https://growthbook.your-host # self-hosted only; trusted UI origin
 ```
 
 Get a Personal Access Token from [`app.growthbook.io/account/personal-access-tokens`](https://app.growthbook.io/account/personal-access-tokens). The token is tied to your GrowthBook user, so flags and experiments the write skills create are attributed to you automatically — no separate owner setting needed.
@@ -135,14 +136,15 @@ You don't invoke workflows directly — the domain skill picks one from your req
 
 ## How it works
 
-The plugin bundles a small Node helper (`scripts/gb-call`) that handles auth, base URL, and error reporting for every REST request. Each of the four skill directories also contains a `scripts/gb-call` symlink so agents installed via `npx skills install` (Cursor, Codex, etc.) can resolve it relative to the skill directory. Skills call it via Bash:
+The plugin bundles a small Node helper (`scripts/gb-call`) that handles auth, API base URL, trusted app-origin resolution, and error reporting. Each of the four skill directories also contains a `scripts/gb-call` symlink so agents installed via `npx skills install` (Cursor, Codex, etc.) can resolve it relative to the skill directory. Skills call it via Bash:
 
 ```bash
 gb-call GET /api/v2/features
 echo '<payload>' | gb-call POST /api/v2/features -
+gb-call app-origin
 ```
 
-`gb-call` is shorthand in workflow examples. The domain router resolves it to `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call` for the Claude Code plugin or `scripts/gb-call` relative to a standalone skill install; it does not need to be globally available on `PATH`.
+`gb-call` is shorthand in workflow examples. The domain router resolves it to `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call` for the Claude Code plugin or `scripts/gb-call` relative to a standalone skill install; it does not need to be globally available on `PATH`. External agents call `app-origin` once per conversation when they first need a UI link and reuse that trusted origin across workflows.
 
 See [`scripts/README.md`](scripts/README.md) for the full usage reference.
 
@@ -195,7 +197,7 @@ CHANGELOG.md
 - **Where the key lives.** `gb-setup` writes `~/.config/growthbook/.env` inside a `0700` directory at file mode `0600` — owner-read/write only. Environment variables take precedence over the file, so CI and one-off overrides keep working.
 - **Pasting a key into chat.** The value you give `gb-setup` lands in your local transcript and is sent to your configured model provider as part of the conversation; it cannot be retroactively masked. Generate a fresh PAT for the plugin rather than reusing your personal admin token — that way you can revoke it independently if anything goes wrong.
 - **Revoking a leaked key.** Visit [`app.growthbook.io/account/personal-access-tokens`](https://app.growthbook.io/account/personal-access-tokens) (or your self-hosted equivalent) and revoke. Then re-run `/growthbook:gb-setup` with the replacement.
-- **What the helper rejects.** `gb-call` refuses values containing whitespace or control characters (CRLF in `GB_API_KEY` would inject headers); `gb-setup` refuses `http://` URLs and URLs with a path component.
+- **What the helper rejects.** `gb-call` refuses values containing whitespace or control characters (CRLF in `GB_API_KEY` would inject headers) and rejects malformed `GB_APP_URL` origins. `gb-setup` refuses `http://` URLs and URLs with a path, query, hash, or credentials.
 
 ## Contributing
 

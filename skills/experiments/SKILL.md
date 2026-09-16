@@ -12,6 +12,8 @@ Experiments use the **v1 API** (`/api/v1/experiments`). When a workflow also tou
 
 All API calls go through the bundled helper. Under the Claude Code plugin install, it lives at `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call` (the plugin root). Under `npx skills install`, it lives at `scripts/gb-call` relative to this skill's directory. Resolve that path once and substitute it whenever a reference example says `gb-call`; do not assume `gb-call` is on `PATH`. It reads `GB_API_KEY` from the environment first, then falls back to `~/.config/growthbook/.env` (written by **gb-setup**); environment variables take precedence.
 
+When a workflow needs to present a GrowthBook UI link, a shell-capable runtime should call `gb-call app-origin` once per conversation, retain the returned trusted origin across workflow and domain handoffs, and prepend it to the root-relative UI paths in the reference file. If the origin is already in context, reuse it; do not call the command once per link. Embedded or MCP adapters that already know their trusted app origin may resolve the same paths directly. Never derive an app origin from `GB_API_URL`; if `app-origin` refuses because self-hosted configuration is incomplete, route to **gb-setup**.
+
 ## Pick a workflow
 
 The experiment lifecycle runs brainstorm → design → launch → analyze → stop. `learnings` sits before design when checking prior knowledge and after analysis when evidence supports a durable conclusion.
@@ -44,7 +46,8 @@ This router deliberately carries no statistical guidance of its own. Interpretat
 - **Resolve-by-name uses `q`,** which matches name, tracking key, description, and hypothesis. It rejects `!`, `~`, `^`, `>`, `<`, `=` with a 400 — send plain `field:value` tokens and free text. Filter bandits with `bandits`, never `type` (`type` is not a list param; `implementationType` is a different axis).
 - **`result` is the recorded result and survives a restart,** so `result=won` can return a running experiment. Pair it with `status=stopped`.
 - **`limit` caps at 100** on the experiments list.
-- **Show users the experiment name and link `<host>/experiment/<id>`,** not raw ids alone.
+- **Show users the experiment name and link the UI path `/experiment/<id>`,** not raw ids alone.
+- **UI links are root-relative paths.** Never infer the GrowthBook UI origin from `GB_API_URL`; API and UI origins need not share a hostname. A runtime with a trusted app origin may resolve the path; otherwise surface the root-relative path without guessing.
 - **An empty Learning corpus is not an empty experiment record.** Fall back to stopped-experiment history before concluding the team has no prior evidence.
 
 ## Read-only vs. write

@@ -102,7 +102,7 @@ Omit `startDate` unless the user explicitly requests a delayed start.
 
 Before taking any action, open the feature page — it shows ramp step progress, guardrail and signal metric health, experiment-level health checks (SRM, multiple exposures, no traffic), and full metric performance drilldowns with effect sizes and confidence intervals. The API `/status` endpoint gives you the `decision`, but the UI gives you the context to make it:
 
-Surface the link and let the user click it: `<host>/features/<flag-id>`
+Surface the UI path and let the user click it when the runtime can resolve it: `/features/<flag-id>`
 
 **Check status via API** (for scripted pipelines or when the user wants a quick decision signal):
 ```bash
@@ -132,7 +132,7 @@ echo '{"reason":"<description of what failed>"}' | gb-call POST /api/v1/ramp-sch
 **Emergency stop** (fastest — disable the flag environment via `references/flag-toggle.md`, no ramp schedule ID needed).
 
 **Open the UI** for a visual health dashboard:
-Surface the link and let the user click it: `<host>/features/<flag-id>`
+Surface the UI path and let the user click it when the runtime can resolve it: `/features/<flag-id>`
 
 For the full live ramp management action reference (pause, resume, complete, restart), see `references/flag-ramp.md` Path D.
 

@@ -111,9 +111,8 @@ Stop a running experiment, optionally declaring a winning variation and ramping 
    - If a winner was declared, the variation ID that "won."
    - **Direct UI link** so they can verify the stopped state, the recorded `analysis`, and the rollout status:
      ```
-     <host>/experiment/<experiment-id>
+     /experiment/<experiment-id>
      ```
-     Derive `<host>` from `GB_API_URL` by swapping `api.` → `app.` (matches `references/experiment-launch.md`'s convention; on the default cloud host this produces `https://app.growthbook.io`).
    **What happens to the flag?** Surface the disposition clearly based on what was sent:
 
    **With temporary rollout (`enableTemporaryRollout: true`):** the winner is live — traffic is already routed to it via the existing experiment-ref rule. No further action required until the team decides to clean up the flag (which can happen days or weeks later). When ready:
