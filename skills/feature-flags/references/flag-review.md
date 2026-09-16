@@ -76,8 +76,7 @@ draft → [request-review] → pending-review → [approve]           → approv
    **Nothing known** → same broad query, show all results and ask the user to identify theirs.
 
 2. For anything non-trivial, offer to open the GrowthBook UI first — the side-by-side diff and approval controls are clearer than text:
-   Surface the link and let the user click it: `<host>/features/<flag-id>?v=<version>`
-   Derive `<host>` from `GB_API_URL` by replacing `api.` → `app.`. If the reviewer prefers to work in the UI, stop here.
+   Surface the UI path and let the user click it when the runtime can resolve it: `/features/<flag-id>?v=<version>`. If the reviewer prefers to work in the UI, stop here.
 
    For API-based review, fetch both the revision and the live feature to show a proper before/after diff:
    ```bash

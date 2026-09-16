@@ -154,10 +154,8 @@ Fetch results, refresh the snapshot only when the cached data is over 24 hours o
 6. **Link to the experiment, then suggest the next step.** Always surface the direct UI link so the user can review the live results, dimensional cuts, and historical snapshots beyond what `/results` returns:
 
    ```
-   View in GrowthBook: <host>/experiment/<exp_id>
+   View in GrowthBook: /experiment/<exp_id>
    ```
-
-   Derive `<host>` from `GB_API_URL` by swapping `api.` → `app.` (matches `references/experiment-launch.md`'s convention; on the default cloud host this produces `https://app.growthbook.io`).
 
    Then suggest a next action based on `experiment.status` from step 1:
 

@@ -187,7 +187,7 @@ The "Guardrails" section is where you document things the REST API will not enfo
 
 When a new API quirk bites you, add it here. Don't fix it by adding logic to `gb-call` — that helper stays dumb on purpose.
 
-**Refuse, don't sanitize.** When a skill or `gb-call` encounters a value that's *sometimes wrong in ways the system can't safely fix* — a `GB_API_KEY` containing CRLF that would inject headers, a `GB_API_URL` with a path component that would mis-route every request — reject with a clear error rather than silently coercing. Silent fix-ups train users to trust that the system "just works" when the value is sometimes meaningfully wrong; explicit refusals keep the human in the loop. Existing examples: `gb-call`'s control-character check on `GB_API_KEY`/`GB_API_URL`, `gb-setup`'s URL-shape validation. Use this pattern any time the safe response to a malformed value is "tell the user to fix their input."
+**Refuse, don't sanitize.** When a skill or `gb-call` encounters a value that's *sometimes wrong in ways the system can't safely fix* — a `GB_API_KEY` containing CRLF that would inject headers, a `GB_API_URL` with a path component that would mis-route every request, or a missing `GB_APP_URL` on self-hosted where the UI origin cannot be inferred — reject with a clear error rather than silently coercing. Silent fix-ups train users to trust that the system "just works" when the value is sometimes meaningfully wrong; explicit refusals keep the human in the loop. Existing examples: `gb-call`'s control-character checks and `app-origin` validation, plus `gb-setup`'s URL-shape validation. Use this pattern any time the safe response to a malformed value is "tell the user to fix their input."
 
 ## Experiment skills: voice authority
 
@@ -240,19 +240,20 @@ Conventions every skill must follow:
 - **Never echo `GB_API_KEY` in user-facing output.** Mask to last 4 characters when surfacing identity. The skill's stdout/stderr lands in the user's transcript.
 - **Some GrowthBook API responses contain secrets** (SDK keys, webhook signing keys, etc.). None of the current workflows hit those endpoints. A future workflow that does must filter the response before surfacing — don't dump the raw body to the user.
 - **The `gb-setup` flow names the transcript-exposure risk explicitly** before the user pastes. Any future skill that prompts for a secret must do the same; users deserve to know before they paste.
-- **Recommend scoped, revocable PATs** over personal admin tokens. If a value is ever exposed, the only effective fix is rotation at `<host>/account/personal-access-tokens`.
+- **Recommend scoped, revocable PATs** over personal admin tokens. If a value is ever exposed, the only effective fix is rotation at `<GB_APP_URL>/account/personal-access-tokens` (or the cloud default).
 
 ## Env var contract
 
-Two vars drive every skill: `GB_API_KEY` (required), `GB_API_URL` (self-hosted only). The PAT is tied to a GrowthBook user, so write skills let the API attribute new flags/experiments to the token's user — there is no separate owner var to set. `gb-call` reads them from `process.env` first, then falls back to `~/.config/growthbook/.env` if a var is unset. **Env always wins over the file** — useful for CI and one-off overrides.
+Three vars drive every skill: `GB_API_KEY` (required), plus `GB_API_URL` and `GB_APP_URL` for self-hosted installations. The PAT is tied to a GrowthBook user, so write skills let the API attribute new flags/experiments to the token's user — there is no separate owner var to set. `gb-call` reads them from `process.env` first, then falls back to `~/.config/growthbook/.env` if a var is unset. **Env always wins over the file per variable** — useful for CI and one-off overrides.
 
-- Users get the file via `/growthbook:gb-setup`, which validates against `GET /api/v1/projects` and writes with `chmod 600`.
+- Users get the file via `/growthbook:gb-setup`, which validates against `GET /api/v1/projects`, verifies `gb-call app-origin`, and writes with `chmod 600`.
 - Skills never read or write the file themselves — only `gb-call` and `gb-setup` touch it. If you find yourself adding env-var-reading logic to another skill, stop: the helper handles it.
+- UI links use root-relative paths in workflow files. Shell-capable agents call `gb-call app-origin` once per conversation when the first UI link is needed, retain the result across workflow and domain handoffs, and prepend it to subsequent paths. Embedded and MCP adapters may resolve paths from their own trusted app origin. Never derive `GB_APP_URL` from `GB_API_URL`.
 - New env vars should be rare. Adding one means updating `gb-setup`, `gb-call`, the README, and every skill preamble. Prefer richer existing-var semantics (e.g. `GB_API_KEY` accepting both PATs and Secret Keys) over a new variable.
 
 ## The helper (`scripts/gb-call`)
 
-Stays minimal on purpose. It is *one* Node file, *no* dependencies, uses built-in `fetch`. Reads env vars (with `.env` fallback), prints body to stdout on 2xx, prints a routing-aware error to stderr on non-2xx with exit 1.
+Stays minimal on purpose. It is *one* Node file, *no* dependencies, uses built-in `fetch`. Reads env vars (with `.env` fallback), prints body to stdout on 2xx, prints the trusted UI origin for `app-origin`, and prints a routing-aware error to stderr on failure.
 
 The error catalog is small but load-bearing — each branch in `explainHttpError` translates an HTTP failure into a one-line "here's what to do" hint (usually pointing at `/growthbook:gb-setup`). When adding a new branch, keep two properties: (a) the synthesized message names a fix, not just a failure; (b) the raw response body is still printed underneath so power users can debug.
 

@@ -12,6 +12,8 @@ Flags use the **v2 API** (`/api/v2/features`). Environments, projects, and saved
 
 All API calls go through the bundled helper. Under the Claude Code plugin install, it lives at `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call` (the plugin root). Under `npx skills install`, it lives at `scripts/gb-call` relative to this skill's directory. Resolve that path once and substitute it whenever a reference example says `gb-call`; do not assume `gb-call` is on `PATH`. It reads `GB_API_KEY` from the environment first, then falls back to `~/.config/growthbook/.env` (written by **gb-setup**); environment variables take precedence.
 
+When a workflow needs to present a GrowthBook UI link, a shell-capable runtime should call `gb-call app-origin` once per conversation, retain the returned trusted origin across workflow and domain handoffs, and prepend it to the root-relative UI paths in the reference file. If the origin is already in context, reuse it; do not call the command once per link. Embedded or MCP adapters that already know their trusted app origin may resolve the same paths directly. Never derive an app origin from `GB_API_URL`; if `app-origin` refuses because self-hosted configuration is incomplete, route to **gb-setup**.
+
 ## Pick a workflow
 
 Read exactly one of these, based on what the user is doing. If two look plausible, read the more specific one.
@@ -46,8 +48,9 @@ These hold across every flag workflow. The reference files assume them.
 - **Thread the draft version through a chain.** When several write workflows run in sequence in one session, carry the `version` returned by the previous step instead of re-sending `new`. `new` auto-creates or reuses a draft, which can silently pick up a teammate's concurrent draft mid-chain. Only fall back to `new` (or `/revisions/latest?mine=true`) on a fresh start.
 - **POSTing `rules` replaces the entire array.** The v2 rules array is top-level and scoped by `environments` or `allEnvironments`. GET the current rules first for any partial edit.
 - **`defaultValue` is always a string,** whatever the flag's value type.
-- **Show users the flag key** (the `id`), never an internal Mongo id. Link to `<host>/features/<key>`.
-- **Print deep links, don't open them.** This skill has no browser grant on purpose — surface the URL and let the user click.
+- **Show users the flag key** (the `id`), never an internal Mongo id. Link to the UI path `/features/<key>`.
+- **UI links are root-relative paths.** Never infer the GrowthBook UI origin from `GB_API_URL`; API and UI origins need not share a hostname. A runtime with a trusted app origin may resolve the path; otherwise surface the root-relative path without guessing.
+- **Print deep links, don't open them.** This skill has no browser grant on purpose — surface the path and let the user click when its runtime can resolve it.
 
 ### Failure modes
 

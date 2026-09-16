@@ -12,6 +12,8 @@ Analytics uses the **v1 API** — `/api/v1/product-analytics/search`, `/columns`
 
 All API calls go through the bundled helper. Under the Claude Code plugin install, it lives at `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call` (the plugin root). Under `npx skills install`, it lives at `scripts/gb-call` relative to this skill's directory. Resolve that path once and substitute it whenever a reference example says `gb-call`; do not assume `gb-call` is on `PATH`. It reads `GB_API_KEY` from the environment first, then falls back to `~/.config/growthbook/.env` (written by **gb-setup**); environment variables take precedence.
 
+When a workflow needs to construct a GrowthBook UI link from a root-relative path, a shell-capable runtime should call `gb-call app-origin` once per conversation, retain the returned trusted origin across workflow and domain handoffs, and prepend it to each path. If the origin is already in context, reuse it; do not call the command once per link. Embedded or MCP adapters that already know their trusted app origin may resolve paths directly. Never derive an app origin from `GB_API_URL`; if `app-origin` refuses because self-hosted configuration is incomplete, route to **gb-setup**. API-returned `explorationUrl` values are already complete and must be used unchanged.
+
 ## Pick a workflow
 
 | Read this                         | When the user wants to                                                                                                      |
