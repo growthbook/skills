@@ -28,10 +28,12 @@ Resolve the bundled helper for the current client before using it: under the Cla
    I see existing config at ~/.config/growthbook/.env:
      GB_API_KEY = gb_pat_****wxyz   (last 4 shown)
      GB_API_URL = (not set — defaults to https://api.growthbook.io)
-     GB_APP_URL = (not set — defaults to https://app.growthbook.io)
+     GB_APP_URL = (not set — defaults to https://app.growthbook.io because the API URL uses GrowthBook Cloud)
 
    Want to keep these, update one, or start fresh?
    ```
+
+   Describe an unset `GB_APP_URL` based on the effective API origin: it defaults to `https://app.growthbook.io` when the API origin is GrowthBook Cloud, but is required when a custom self-hosted `GB_API_URL` is configured.
 
    Also note what's in `process.env` — if the user has shell exports, those will override the file. Surface that ("`GB_API_KEY` is also set in your shell environment; the file value won't be used unless you unset the shell var.")
 

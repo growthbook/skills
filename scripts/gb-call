@@ -89,11 +89,26 @@ function normalizeAppOrigin(value) {
   return url.origin;
 }
 
+function isCloudApiOrigin(value) {
+  try {
+    return new URL(value).href === `${CLOUD_API_ORIGIN}/`;
+  } catch {
+    return false;
+  }
+}
+
 const fileEnv = loadEnvFile();
 const apiKey = process.env.GB_API_KEY || fileEnv.GB_API_KEY;
 const apiUrl = process.env.GB_API_URL || fileEnv.GB_API_URL || CLOUD_API_ORIGIN;
 const appUrl = process.env.GB_APP_URL || fileEnv.GB_APP_URL;
 const [method, path, bodyArg] = process.argv.slice(2);
+
+if (CONTROL_RE.test(apiUrl)) {
+  die(
+    "GB_API_URL contains whitespace or control characters.\n" +
+      "Re-run the gb-setup skill to set a clean value.",
+  );
+}
 
 if (method?.toLowerCase() === "app-origin") {
   if (path || bodyArg) {
@@ -103,7 +118,7 @@ if (method?.toLowerCase() === "app-origin") {
     process.stdout.write(normalizeAppOrigin(appUrl));
     process.exit(0);
   }
-  if (apiUrl.replace(/\/$/, "") === CLOUD_API_ORIGIN) {
+  if (isCloudApiOrigin(apiUrl)) {
     process.stdout.write(CLOUD_APP_ORIGIN);
     process.exit(0);
   }
@@ -130,13 +145,6 @@ if (CONTROL_RE.test(apiKey)) {
       "Re-run the gb-setup skill to set a clean value.",
   );
 }
-if (CONTROL_RE.test(apiUrl)) {
-  die(
-    "GB_API_URL contains whitespace or control characters.\n" +
-      "Re-run the gb-setup skill to set a clean value.",
-  );
-}
-
 const base = apiUrl.replace(/\/$/, "");
 
 if (!method || !path) {

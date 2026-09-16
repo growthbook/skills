@@ -38,6 +38,14 @@ test("app-origin returns the cloud default without an API key", () => {
   assert.equal(result.stdout, "https://app.growthbook.io");
 });
 
+test("app-origin recognizes the cloud API with an explicit default port", () => {
+  const result = runAppOrigin({
+    env: { GB_API_URL: "https://api.growthbook.io:443" },
+  });
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, "https://app.growthbook.io");
+});
+
 test("app-origin returns a normalized configured origin", () => {
   const result = runAppOrigin({
     env: { GB_APP_URL: "https://growthbook.internal/" },
