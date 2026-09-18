@@ -257,6 +257,8 @@ Stays minimal on purpose. It is *one* Node file, *no* dependencies, uses built-i
 
 The error catalog is small but load-bearing — each branch in `explainHttpError` translates an HTTP failure into a one-line "here's what to do" hint (usually pointing at `/growthbook:gb-setup`). When adding a new branch, keep two properties: (a) the synthesized message names a fix, not just a failure; (b) the raw response body is still printed underneath so power users can debug.
 
+**On release, bump `VERSION` in `scripts/gb-call` too.** It rides in the `User-Agent` so GrowthBook can attribute API usage per plugin release, and it is the **third** place the version lives, alongside `.claude-plugin/plugin.json` and `.cursor-plugin/plugin.json`. It is hardcoded rather than read from either manifest because a standalone install (`npx skills install`) ships a skill directory without the repo root, so neither manifest is reachable.
+
 Resist the urge to add features. `scripts/README.md` lists what is **not in scope**:
 
 - No retry / backoff (60 rpm rate limit; polling skills add their own delays)

@@ -205,6 +205,8 @@ Issues and PRs welcome at [github.com/growthbook/skills](https://github.com/grow
 
 Before changing a skill: read [`CLAUDE.md`](CLAUDE.md). It documents the skill structure, the `allowed-tools` security model, the "verify every payload shape against the GrowthBook back-end source before shipping" rule, and a doc cross-reference map for finding the canonical answer on any GrowthBook concept.
 
+Releasing: the version lives in three places that must move together — `.claude-plugin/plugin.json`, `.cursor-plugin/plugin.json`, and `VERSION` in [`scripts/gb-call`](scripts/gb-call) (sent as the `User-Agent`, so it can't be read from a manifest a standalone install doesn't ship).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

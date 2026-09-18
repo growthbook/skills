@@ -167,23 +167,18 @@ if (bodyArg === "-") {
   }
 }
 
-// Identifies skill-driven traffic to GrowthBook, which would otherwise be
-// indistinguishable from someone's own script hitting the API directly.
-function pluginVersion() {
-  try {
-    // __dirname resolves through the per-skill scripts/gb-call symlinks.
-    const manifest = join(__dirname, "..", ".claude-plugin", "plugin.json");
-    return JSON.parse(readFileSync(manifest, "utf8")).version || "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
-}
+// RELEASE: bump alongside .claude-plugin/plugin.json and .cursor-plugin/plugin.json.
+// Hardcoded rather than read from either manifest because a standalone skill install
+// (`npx skills install`) ships the skill directory alone, without the repo root.
+const VERSION = "2.0.0";
 
 const url = `${base}${path.startsWith("/") ? path : "/" + path}`;
 const headers = {
   Authorization: `Bearer ${apiKey}`,
   Accept: "application/json",
-  "User-Agent": `growthbook-skills/${pluginVersion()} (gb-call)`,
+  // Identifies skill-driven traffic, which would otherwise be indistinguishable
+  // from someone's own script hitting the API directly.
+  "User-Agent": `growthbook-skills/${VERSION} (gb-call)`,
 };
 if (body) headers["Content-Type"] = "application/json";
 
