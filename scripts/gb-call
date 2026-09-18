@@ -167,10 +167,23 @@ if (bodyArg === "-") {
   }
 }
 
+// Identifies skill-driven traffic to GrowthBook, which would otherwise be
+// indistinguishable from someone's own script hitting the API directly.
+function pluginVersion() {
+  try {
+    // __dirname resolves through the per-skill scripts/gb-call symlinks.
+    const manifest = join(__dirname, "..", ".claude-plugin", "plugin.json");
+    return JSON.parse(readFileSync(manifest, "utf8")).version || "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
+
 const url = `${base}${path.startsWith("/") ? path : "/" + path}`;
 const headers = {
   Authorization: `Bearer ${apiKey}`,
   Accept: "application/json",
+  "User-Agent": `growthbook-skills/${pluginVersion()} (gb-call)`,
 };
 if (body) headers["Content-Type"] = "application/json";
 

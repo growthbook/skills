@@ -4,6 +4,10 @@ All notable changes to the `growthbook` plugin are documented here. Format follo
 
 ## [2.0.0] — Unreleased
 
+### Added
+
+- `gb-call` sends `User-Agent: growthbook-skills/<plugin version> (gb-call)`, so GrowthBook can attribute API usage to the plugin rather than an unidentified HTTP client
+
 ### Changed — BREAKING: 25 skills reorganized into 4 domain skills
 
 The plugin now ships **four** skills — `feature-flags`, `experiments`, `analytics`, and `gb-setup` — instead of 25 flat ones. Each domain skill is a router: its `SKILL.md` carries the description, a workflow index, and the conventions shared across that domain, and the individual workflows moved into `references/<workflow>.md` inside it. Nothing was dropped; all 24 non-setup workflows survive with their steps, guardrails, and endpoint lists intact.
