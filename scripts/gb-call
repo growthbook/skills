@@ -2,22 +2,24 @@
 // gb-call — minimal REST client for the GrowthBook API.
 //
 // Every `growthbook` plugin skill calls this. Reads GB_API_KEY (and optional
-// GB_API_URL) from env first, falling back to ~/.config/growthbook/.env
+// GB_API_URL / GB_APP_URL) from env first, falling back to ~/.config/growthbook/.env
 // when env vars are unset. Env always wins over the file (POSIX convention).
 // On non-2xx, writes a targeted error to stderr that points at the gb-setup skill
 // when the failure looks like a config problem.
 //
 // Usage:
 //   gb-call <METHOD> <PATH> [BODY_FILE | -]
+//   gb-call app-origin
 //
 // Examples:
 //   gb-call GET /api/v1/features
 //   gb-call GET '/api/v1/features?limit=50&projectId=prj_abc'
 //   gb-call POST /api/v1/features ./payload.json
 //   echo '{"id":"foo","valueType":"boolean"}' | gb-call POST /api/v1/features -
+//   gb-call app-origin
 //
 // Config sources (in precedence order):
-//   1. process.env.GB_API_KEY / GB_API_URL
+//   1. process.env.GB_API_KEY / GB_API_URL / GB_APP_URL
 //   2. ~/.config/growthbook/.env  (KEY=value per line; written by gb-setup)
 
 const { readFileSync, existsSync } = require("node:fs");
@@ -47,9 +49,84 @@ function loadEnvFile() {
   return out;
 }
 
+const CLOUD_API_ORIGIN = "https://api.growthbook.io";
+const CLOUD_APP_ORIGIN = "https://app.growthbook.io";
+const CONTROL_RE = /[\s\x00-\x1f\x7f]/;
+
+function normalizeAppOrigin(value) {
+  if (CONTROL_RE.test(value)) {
+    die(
+      "GB_APP_URL contains whitespace or control characters.\n" +
+        "Re-run the gb-setup skill to set a clean value.",
+    );
+  }
+
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    die(
+      "GB_APP_URL must be a valid HTTPS origin with no path, query, or hash.\n" +
+        "Re-run the gb-setup skill to correct it.",
+    );
+  }
+
+  if (
+    url.protocol !== "https:" ||
+    !url.hostname ||
+    url.username ||
+    url.password ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash
+  ) {
+    die(
+      "GB_APP_URL must be a valid HTTPS origin with no path, query, or hash.\n" +
+        "Re-run the gb-setup skill to correct it.",
+    );
+  }
+
+  return url.origin;
+}
+
+function isCloudApiOrigin(value) {
+  try {
+    return new URL(value).href === `${CLOUD_API_ORIGIN}/`;
+  } catch {
+    return false;
+  }
+}
+
 const fileEnv = loadEnvFile();
 const apiKey = process.env.GB_API_KEY || fileEnv.GB_API_KEY;
-const apiUrl = process.env.GB_API_URL || fileEnv.GB_API_URL || "https://api.growthbook.io";
+const apiUrl = process.env.GB_API_URL || fileEnv.GB_API_URL || CLOUD_API_ORIGIN;
+const appUrl = process.env.GB_APP_URL || fileEnv.GB_APP_URL;
+const [method, path, bodyArg] = process.argv.slice(2);
+
+if (CONTROL_RE.test(apiUrl)) {
+  die(
+    "GB_API_URL contains whitespace or control characters.\n" +
+      "Re-run the gb-setup skill to set a clean value.",
+  );
+}
+
+if (method?.toLowerCase() === "app-origin") {
+  if (path || bodyArg) {
+    die("Usage: gb-call app-origin");
+  }
+  if (appUrl) {
+    process.stdout.write(normalizeAppOrigin(appUrl));
+    process.exit(0);
+  }
+  if (isCloudApiOrigin(apiUrl)) {
+    process.stdout.write(CLOUD_APP_ORIGIN);
+    process.exit(0);
+  }
+  die(
+    "GB_APP_URL is required when GB_API_URL points to a self-hosted instance.\n" +
+      "Run the gb-setup skill to configure the GrowthBook UI origin.",
+  );
+}
 
 if (!apiKey) {
   die(
@@ -62,25 +139,16 @@ if (!apiKey) {
 // PATs are alphanumeric with `_`/`-`, and a URL has no business containing
 // either. CRLF in apiKey would inject arbitrary headers via the Authorization
 // header; junk in apiUrl would silently corrupt every request.
-const CONTROL_RE = /[\s\x00-\x1f\x7f]/;
 if (CONTROL_RE.test(apiKey)) {
   die(
     "GB_API_KEY contains whitespace or control characters.\n" +
       "Re-run the gb-setup skill to set a clean value.",
   );
 }
-if (CONTROL_RE.test(apiUrl)) {
-  die(
-    "GB_API_URL contains whitespace or control characters.\n" +
-      "Re-run the gb-setup skill to set a clean value.",
-  );
-}
-
 const base = apiUrl.replace(/\/$/, "");
 
-const [method, path, bodyArg] = process.argv.slice(2);
 if (!method || !path) {
-  die("Usage: gb-call <METHOD> <PATH> [BODY_FILE | -]");
+  die("Usage: gb-call <METHOD> <PATH> [BODY_FILE | -]\n       gb-call app-origin");
 }
 
 const upperMethod = method.toUpperCase();

@@ -76,7 +76,7 @@ Create a new feature flag in GrowthBook. We always set `{enabled: false}` for ev
 
 ## After creation
 
-The response contains the flag's full configuration. Show the user the flag ID, a reminder that it's disabled everywhere, and a link to the flag in the GrowthBook UI. Derive `<host>` from `GB_API_URL` by replacing `api.` → `app.` (cloud default: `https://app.growthbook.io`). Link: `<host>/features/<flag-id>`.
+The response contains the flag's full configuration. Show the user the flag ID, a reminder that it's disabled everywhere, and the GrowthBook UI path `/features/<flag-id>`.
 
 ## Handoffs
 

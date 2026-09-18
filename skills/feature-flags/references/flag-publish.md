@@ -107,7 +107,7 @@ Stop here.
 > **D. Per-token bypass** — use a Personal Access Token whose role grants `bypassApprovalChecks` on this project. Update `GB_API_KEY`, then re-run."
 
 If the user wants the UI opened (option B, or as a companion to A):
-Surface the link and let the user click it: `<host>/features/<flag-id>?v=<version>`
+Surface the UI path and let the user click it when the runtime can resolve it: `/features/<flag-id>?v=<version>`
 
 If the user picks **A**, request review and stop:
 
@@ -131,8 +131,7 @@ A 409 means the draft's base revision is stale — the live flag changed since t
 > "There's a merge conflict on `<flag-id>`. Want to resolve it in the GrowthBook UI (recommended for complex changes), or should I walk through it here?"
 
 If the user wants the UI:
-Surface the link and let the user click it: `<host>/features/<flag-id>?v=<version>`
-Derive `<host>` from `GB_API_URL` by replacing `api.` → `app.` (cloud default: `https://app.growthbook.io`). Stop here — tell the user to rebase in the UI and ask you to publish again when they're done.
+Surface the UI path and let the user click it when the runtime can resolve it: `/features/<flag-id>?v=<version>`. Stop here — tell the user to rebase in the UI and ask you to publish again when they're done.
 
 If the user wants to resolve via API, continue:
 
@@ -205,7 +204,7 @@ echo '{"strategy":"draft"}' \
 
 - Flag ID and outcome (published / approval-requested / discarded / reverted).
 - Revision version and new status (from the publish response).
-- UI link — derive `<host>` from `GB_API_URL` by replacing `api.` → `app.` (cloud default: `https://app.growthbook.io`). Open or display: `<host>/features/<flag-id>?v=<version>`.
+- UI path: `/features/<flag-id>?v=<version>`.
 - For publish: optionally fetch the full flag state to summarize what's now live:
   ```bash
   gb-call GET /api/v2/features/<id>

@@ -69,7 +69,7 @@ From the response: show `explanation`; confirm `saved: true` and `visualChangeId
 
 ### 4. Report and hand off
 
-Link the user to `<host>/experiment/<experiment-id>`, deriving `<host>` from `GB_API_URL` by swapping `api.` → `app.` (cloud default: `https://app.growthbook.io`). Then state unprompted that it's a draft with no metrics and isn't running, plus:
+Give the user the experiment's UI path, `/experiment/<experiment-id>`, resolved against the trusted app origin the router describes. Then state unprompted that it's a draft with no metrics and isn't running, plus:
 
 - **Visual changes render only if the SDK connection has `Include Visual Experiments` enabled** — the most common reason a visual test appears to do nothing live.
 - Preview the variation before starting it: the server works from fetched HTML, not a rendered page.

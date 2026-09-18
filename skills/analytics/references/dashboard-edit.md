@@ -1,0 +1,142 @@
+---
+name: dashboard-edit
+description: Change a GrowthBook Analytics dashboard that already exists — add or remove a chart, swap a metric, change the timeframe, rename it, or re-scope it. Use when the user asks to "add a chart to this dashboard", "remove that block", "change the dashboard to last 90 days", "rename this dashboard", or refers to a dashboard they are already looking at. For building one from scratch, use dashboard-create.
+---
+
+# dashboard-edit
+
+Read a dashboard, apply the change, and write the whole thing back. An update replaces the dashboard's block list outright, so the list you send is the dashboard the user ends up with — every tile being kept, not just the one that changed.
+
+Read-then-write is not optional here. Sending a block list assembled from memory is how a tile the user still wants gets deleted.
+
+## Contents
+
+- Workflow
+  - 1. Resolve the dashboard
+  - 2. Read it
+  - 3. Apply the change
+  - 4. Write it back
+- What each field does when omitted
+- Guardrails
+- Endpoints used
+- Handoffs
+
+## Workflow
+
+### 1. Resolve the dashboard
+
+Take the first of these that applies:
+
+- **The dashboard the user is already working on.** Once this conversation has read or written one, every follow-up is about that one. "Remove the win-rate tile" and "make it 90 days" are about the dashboard on screen — do not ask which one, or whether to make a new one instead.
+- **One the user named.** Match it in the list below.
+- **A list, when the conversation has neither.**
+
+  ```bash
+  gb-call GET /api/v1/dashboards
+  ```
+
+  One clear match → use it. Several → ask which.
+
+A dashboard with an `experimentId` belongs to that experiment and is edited on the experiment's own page. Say so and stop rather than writing to it.
+
+### 2. Read it
+
+```bash
+gb-call GET /api/v1/dashboards/<id>
+```
+
+Capture `title`, `projects`, `globalControls`, `comparison`, and the full `blocks` array. Each stored block carries `id`, `uid`, `organization`, `layout`, and — on a chart block — `explorerAnalysisId` and `config`.
+
+### 3. Apply the change
+
+Start from the blocks you just read and change only what was asked. What you send for each one depends on whether you touched it:
+
+- **Unchanged block** → `{ "id": "dshblk_…" }`. The id alone keeps the tile exactly as saved — its config, its position, and its last result.
+- **Changed block** → the full block copied from the `GET`, with the requested change applied — `organization` and `uid` included. An `id` marks the block as one the dashboard already has, and a saved block is validated whole, so `id` plus a partial block is rejected.
+- **Changed a chart's `config`** → also drop that block's `explorerAnalysisId`, so the write re-runs it. Leave `comparisonExplorerAnalysisId` alone either way — the write discards whatever you send and keeps only its own comparison run, so a copied one can never end up beside fresh primary numbers.
+
+| Change | What to do |
+| --- | --- |
+| Add a tile | Append a new block with `type`, `title`, `description`, `config`, and a `layout` placing it below the others. Omit `explorerAnalysisId` — the write runs the chart. |
+| Remove a tile | Leave it out of the array. |
+| Reorder or resize | Change the `layout` on the blocks involved. |
+| Reconfigure a chart | Change its `config` **and drop its `explorerAnalysisId`**, so the write re-runs it. Keeping the old id leaves the tile showing the old numbers. |
+| Rename the dashboard | Send `title`. |
+| Change the timeframe | Send `globalControls.dateRange`. Only the nine `predefined` names below are real; anything else is `customLookback`. |
+| Turn comparison on | Send `comparison`. |
+
+**`markdown` blocks on a saved dashboard are the user's words.** Carry every one through verbatim and in place, however many there are. Add or reword one only when the user asks — a dashboard with none may well have had one removed on purpose. If your change leaves a legend describing a chart that is gone, say so in your reply and offer to update it, leaving their words as they are.
+
+For block shapes, the config schema, and the layout arithmetic, read `references/dashboard-create.md`.
+
+### 4. Write it back
+
+```bash
+echo '<update-json>' | gb-call PUT /api/v1/dashboards/<id> -
+```
+
+```json
+{
+  "globalControls": { "dateRange": { "predefined": "last90Days" } },
+  "blocks": ["...the full list, kept blocks unchanged..."]
+}
+```
+
+Show the user what changes before the PUT: which tiles are being added, which removed, and which settings altered. Then report what changed in a sentence.
+
+## What each field does when omitted
+
+Every field on an update is optional, and leaving one out keeps the saved value. That makes a narrow change genuinely narrow — a timeframe change needs `globalControls` alone.
+
+The exception is `blocks`. Send it and it replaces the list; omit it and every tile is left alone.
+
+**Carry a tile you are not changing as `{ "id": "dshblk_…" }`.** The list still defines membership and order, so a tile you leave out is deleted — but a tile you are keeping needs nothing but its id. Only write out a block in full when you are adding it or changing it. Copying a saved tile back verbatim is a transcription job with nothing to gain and a metric id to get wrong.
+
+Adding one chart to a five-tile dashboard is therefore five refs and one new block:
+
+```json
+{
+  "blocks": [
+    { "id": "dshblk_a" },
+    { "id": "dshblk_b" },
+    { "id": "dshblk_c" },
+    { "id": "dshblk_d" },
+    { "id": "dshblk_e" },
+    { "type": "metric-exploration", "title": "Revenue per User — past 6 months", "description": "", "layout": { "x": 0, "y": 24, "w": 24, "h": 8 }, "config": { "…": "…" } }
+  ]
+}
+```
+
+An id that is not on the dashboard is rejected, so a mistyped ref fails the write instead of quietly dropping a tile. So is the same id listed twice — a duplicate would save two tiles sharing one id, which breaks their layout and every later edit of either.
+
+Changing `globalControls.dateRange` re-runs every chart enrolled in it, against the new range, and changing `comparison` re-runs every chart — a dashboard-wide comparison overrides each block's own. The write does that itself: a tile you carried by id comes back with fresh numbers, not the previous window. A dashboard with many tiles is many warehouse queries, so change either only when that is what the user asked for.
+
+These re-runs are best-effort, unlike the blocks you sent in full. A carried tile whose query fails does not fail the `PUT` — the new setting is saved and that one tile keeps its previous result, so the dashboard is saved as 90 days with a tile still showing 30. Nothing in the response says which, so after a timeframe change tell the user the tiles will refresh and to say if one still reads the old window.
+
+## Guardrails
+
+- **Read before you write.** Always `GET` the dashboard in the same turn as the `PUT`. A block list built from an earlier read, or from the create call you made, can be stale.
+- **A `409` means someone edited the dashboard while your write was in flight.** Nothing was saved. It is the one error a bare retry cannot fix — the block list you are holding is built from a version that no longer exists, so re-sending it would clobber their change. `GET` the dashboard again, re-apply the user's change to the new block list, and tell them the dashboard moved under you before writing again. If it conflicts twice, stop and say someone else is editing it.
+- **Send the full block list, or none.** A partial list deletes the tiles it omits.
+- **Carry an unchanged tile by id alone, and each id at most once.** `{ "id": "dshblk_…" }` keeps it exactly as saved; a repeated id is rejected. When you do send a block in full because you changed it, send it exactly as the `GET` returned it — `id`, `uid`, `organization`, `layout` — with your edit applied. Dropping the `id` to get a rejected block accepted is the worst repair available: the write returns 200 and the tile is silently a new one, with a new id, a re-run query, and every reference to the old one broken.
+- **Drop `explorerAnalysisId` only when you changed that chart's `config`.** Dropping it otherwise re-runs a query for nothing; keeping it after a config change shows numbers that do not match the tile.
+- **Summarize the delta, then get a yes.** State what changes, not what the dashboard ends up as: tiles added, tiles removed, tiles whose config moved, and anything dashboard-wide such as the date range. Name removals explicitly — that is the change a user is most likely to have meant differently. Tiles carried through untouched need no mention.
+- **The closed `predefined` list applies twice here**: to `globalControls.dateRange` and to each block's `config.dateRange`. The names are in the router's shared conventions; anything outside them is `customLookback`, so six months is `{ "predefined": "customLookback", "lookbackValue": 6, "lookbackUnit": "month" }` in both places.
+- **A chart you sent in full and cannot run fails the whole update.** Nothing is written, and the error names the block. Fix that config and call again. A tile you carried by id is the other case: it is only re-run when a dashboard-wide setting changed, and a failure there is logged server-side rather than returned, leaving the tile on its previous result.
+- **A failed comparison never fails a write, and never leaves a stale one behind.** Only the primary query does. A chart whose compare-to-previous-period run fails — or whose comparison you just turned off — is saved with no comparison at all rather than the previous run's, so a tile can come back showing a single series where the user asked for two.
+- **Leave `experimentId` out of the update.** It is rejected there, and a general dashboard has none.
+- **Renaming a tile is not renaming the dashboard.** A block's `title` is the tile heading; the dashboard's `title` is the page name.
+
+## Endpoints used
+
+- `GET /api/v1/dashboards` — list dashboards
+- `GET /api/v1/dashboards/:id` — read one, including its blocks
+- `PUT /api/v1/dashboards/:id` — write the change (`409` if the dashboard changed since your `GET`)
+- `DELETE /api/v1/dashboards/:id` — delete a dashboard, when the user explicitly asks for that
+- `GET /api/v1/fact-metrics` and `GET /api/v1/fact-tables/:id` — when the change needs a metric or column the conversation has not resolved
+
+## Handoffs
+
+- `references/dashboard-create.md` — for block shapes, config schema, and layout rules, or to build a new dashboard
+- `references/analytics-explore.md` — if the user just wants to look at a chart rather than change the dashboard
+- `references/metric-search.md` — to resolve a metric the change needs

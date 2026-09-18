@@ -153,7 +153,7 @@ This stages a `detach` ramp action on the draft. The live schedule is removed wh
 
 Before taking any action, suggest the user open the feature page for a full picture of ramp progress — the UI surfaces schedule status, step timeline, and metric health that the API only returns as raw values:
 
-Surface the link and let the user click it: `<host>/features/<flag-id>`
+Surface the UI path and let the user click it when the runtime can resolve it: `/features/<flag-id>`
 
 After that, for API-based management: get the ramp schedule ID from the flag's rules (`rampScheduleId` field on the rule), or look it up:
 

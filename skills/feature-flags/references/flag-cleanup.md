@@ -73,7 +73,7 @@ If 404, halt: "no flag with id `<flag-id>`." Suggest `references/flag-search.md`
   gb-call GET '/api/v2/stale-features?ids=<flag-id>'
   ```
   If the response includes `staleReason: "never-stale"`, halt:
-  > This flag is marked `neverStale` — someone explicitly said it should never be cleaned up automatically (kill switch, ops toggle, license gate, etc.). To proceed, remove the `neverStale` flag in the GrowthBook UI at `<host>/features/<flag-id>` first and re-run me.
+  > This flag is marked `neverStale` — someone explicitly said it should never be cleaned up automatically (kill switch, ops toggle, license gate, etc.). To proceed, remove the `neverStale` flag in the GrowthBook UI at `/features/<flag-id>` first and re-run me.
 
 - **Active experiment-ref rule pointing at a `running` experiment**. One bulk call covers the common case:
   ```bash
@@ -103,7 +103,7 @@ If 404, halt: "no flag with id `<flag-id>`." Suggest `references/flag-search.md`
   gb-call GET /api/v2/features/<flag-id>/revisions/latest
   ```
   If 404, no draft exists — continue. If a draft is returned, halt:
-  > There's an active draft revision (`<version>`) on this flag. Cleaning up the flag would discard those pending changes. Either publish or discard the draft in the GrowthBook UI at `<host>/features/<flag-id>` first.
+  > There's an active draft revision (`<version>`) on this flag. Cleaning up the flag would discard those pending changes. Either publish or discard the draft in the GrowthBook UI at `/features/<flag-id>` first.
 
 - **`/stale-features` doesn't flag this as stale and the user is asking to delete.** Warn but don't halt:
   > Heads-up: GrowthBook doesn't flag this as stale. It's still enabled in `<env>` with active rules. Proceed?
@@ -169,7 +169,7 @@ The response is `{codeRefs: [{ repo, branch, platform, refs: [{filePath, startin
   After confirmation, use the Grep tool to search for the flag ID (kebab-case key, exact match) in the project. Limit to relevant file types (source code, not vendored directories).
 
 If both Code References and Grep return empty, surface:
-> Couldn't find any code references to `<flag-id>`. If you're confident the flag isn't used anywhere, proceed to step 5. Otherwise, double-check the working directory or look at Code References at `<host>/features/<flag-id>` for stale data.
+> Couldn't find any code references to `<flag-id>`. If you're confident the flag isn't used anywhere, proceed to step 5. Otherwise, double-check the working directory or look at Code References at `/features/<flag-id>` for stale data.
 
 ### 4. Walk the user through inlining
 
@@ -207,7 +207,7 @@ Same three-option branch as `references/flag-targeting.md`, **but with one criti
 
 > Your org requires approval before this flag can be archived. To proceed:
 >
-> **A. Standard review flow** (recommended) — I'll request review on the change; a teammate approves it in the GrowthBook UI at `<host>/features/<flag-id>`; you re-run me to resume.
+> **A. Standard review flow** (recommended) — I'll request review on the change; a teammate approves it in the GrowthBook UI at `/features/<flag-id>`; you re-run me to resume.
 >
 > **B. Org-wide bypass** — admin enables "REST API always bypasses approval requirements" in Settings → General → Approvals. This single setting authorizes *both* archive and the final delete step.
 >
@@ -228,7 +228,7 @@ A 409 on the archive POST means the draft's base revision is stale — a teammat
 
 > Your archive of `<flag-id>` couldn't be applied — the flag has changed since I last looked at it. To resolve:
 >
-> - Open `<host>/features/<flag-id>` in the GrowthBook UI.
+> - Open `/features/<flag-id>` in the GrowthBook UI.
 > - Reconcile the change (either rebase our pending archive on top, or discard and re-run me to start fresh against the new live state).
 >
 > Re-run me after the conflict is resolved.
@@ -269,7 +269,7 @@ gb-call DELETE /api/v2/features/<flag-id>
   > Your org requires the "REST API always bypasses approval requirements" setting to be enabled before flags can be deleted via the API. The flag is archived; you can either:
   >
   > - Ask an admin to enable the setting (Settings → General → Approvals), then re-run me to finish the delete.
-  > - Delete manually in the GrowthBook UI at `<host>/features/<flag-id>` (the archived flag is still listed there).
+  > - Delete manually in the GrowthBook UI at `/features/<flag-id>` (the archived flag is still listed there).
   >
   > Per-token `bypassApprovalChecks` does **not** authorize this — it's intentionally a review-workflow bypass only, not a destructive-action override.
 - Other 4xx → halt with the body.
@@ -285,7 +285,7 @@ Print a summary:
 - For delete: linked experiments were unlinked (but not deleted); their tracking keys now point at a non-existent flag.
 - Number of call sites found, files edited, and any that were skipped.
 - Inline replacement value used (`defaultValue` for the flag), surfaced for transparency.
-- UI link: `<host>/features/<flag-id>` — only useful for archived flags (deleted flags 404). Derive `<host>` from `GB_API_URL` by swapping `api.` → `app.`.
+- UI path: `/features/<flag-id>` — only useful for archived flags (deleted flags 404).
 - **Limitation warning:** "Heads-up: I can't detect whether other flags use this one as a prerequisite. If you're not sure, check the GrowthBook UI's 'Used by' panel before deleting — or after archive but before delete, since archive is reversible."
 - **Holdout warning** (if `feature.holdout` was present): "This flag was associated with holdout `<holdout-id>`. The holdout's `linkedExperiments` may still reference experiments that pointed at this flag; their tracking keys are now stale. Audit the holdout in the GrowthBook UI if your experiment-analysis depends on it being clean."
 - Suggested follow-up: re-run Code References (CLI/Action) so the dashboard reflects the post-cleanup codebase state.
@@ -332,4 +332,4 @@ Print a summary:
 - `references/flag-revisions.md` — to check for open drafts that must be resolved before archiving.
 - `references/flag-publish.md` — handles the approval-required (5a) and merge-conflict (5b) branches on archive.
 - the **experiments** skill (`experiment-stop` workflow) — must precede cleanup of a flag wired to a running experiment.
-- Manual UI step (no skill): unarchiving an archived-but-not-yet-deleted flag — done at `<host>/features/<flag-id>`. The skill's rollback step handles the in-session case; outside the session, the user falls back to the UI.
+- Manual UI step (no skill): unarchiving an archived-but-not-yet-deleted flag — done at `/features/<flag-id>`. The skill's rollback step handles the in-session case; outside the session, the user falls back to the UI.

@@ -255,10 +255,10 @@ If the user seems to want you to also embed the feature flag in the codebase, no
 
 Stop and surface the UI links so the user can QA the flag default, the rule's variation values, and the experiment's targeting and metrics in the GrowthBook UI:
 
-- Experiment: `<host>/experiment/<exp_id>`
-- Feature: `<host>/features/<flag-name>` (draft revision `<version>`)
+- Experiment: `/experiment/<exp_id>`
+- Feature: `/features/<flag-name>?v=<version>`
 
-Derive `<host>` from `GB_API_URL` by swapping `api.` → `app.`, as in step 8. Wait for the user's explicit go-ahead before proceeding to step 7.
+Wait for the user's explicit go-ahead before proceeding to step 7.
 
 ### 7. Start the experiment
 
@@ -283,7 +283,7 @@ The experiment and flag exist; only the rule revision is stuck in draft. Halt an
 
 > Your org requires approval before this feature flag rule can go live, and `/start` will not flip the experiment to running until the rule is published. Revision `<version>` on `<flag-name>` is in draft state. Pick one:
 >
-> **A. Standard review flow** (recommended) — I'll request a review now. A teammate (not you, since you created the draft) approves it in the GrowthBook UI at `<host>/features/<flag-name>`, then you re-run me and I'll resume from `/start`.
+> **A. Standard review flow** (recommended) — I'll request a review now. A teammate (not you, since you created the draft) approves it in the GrowthBook UI at `/features/<flag-name>?v=<version>`, then you re-run me and I'll resume from `/start`.
 >
 > **B. Org-wide bypass** — an admin enables "REST API always bypasses approval requirements" in **Settings → General → Approvals**. After that, re-run me.
 >
@@ -310,7 +310,7 @@ The REST API does not expose a separate `start-checklist` endpoint — the failu
 >
 > `<full error body>`
 >
-> Fix the listed items in the GrowthBook UI at `<host>/experiment/<exp_id>`, then re-run me — I'll jump straight back to `/start`.
+> Fix the listed items in the GrowthBook UI at `/experiment/<exp_id>`, then re-run me — I'll jump straight back to `/start`.
 
 Only retry `/start` with `{"skipChecklist": true}` in the body if the user **explicitly** asks to bypass. Never default to bypassing; the checklist is intentional friction.
 
@@ -325,9 +325,9 @@ Print a summary:
 - Variations and their values
 - Pre-launch checklist status (should be `allRequiredComplete=true`)
 - Experiment status (should be `running` after a clean `/start`)
-- Direct UI links (derive the host from `GB_API_URL` by swapping `api.` → `app.`):
-  - Experiment: `<host>/experiment/<exp_id>`
-  - Feature: `<host>/features/<flag-name>`
+- Direct UI paths:
+  - Experiment: `/experiment/<exp_id>`
+  - Feature: `/features/<flag-name>`
 
 ## Guardrails
 
@@ -360,4 +360,4 @@ Print a summary:
 - the **feature-flags** skill (`flag-search` workflow) — to find an existing flag ID when you only have a name or description.
 - `references/experiment-analyze.md` — after the experiment is running and traffic accumulates.
 - `references/experiment-stop.md` — when results are settled.
-- Manual metric creation — if a metric you need doesn't exist yet, the user must create it in the GrowthBook UI at `<host>/metrics` (or `<host>/fact-tables` for fact metrics) before re-running this skill. No skill for that yet.
+- Manual metric creation — if a metric you need doesn't exist yet, the user must create it in the GrowthBook UI at `/metrics` (or `/fact-tables` for fact metrics) before re-running this skill. No skill for that yet.
