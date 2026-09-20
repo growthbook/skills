@@ -187,6 +187,12 @@ gb-call GET /api/v1/experiments/<exp_id>
 
 - `status` must be `draft`; otherwise halt (running/stopped experiments are `experiment-analyze` / `experiment-stop` territory).
 - Capture `variations[].variationId`, `hashAttribute`, `hasVisualChangesets`, and `linkedFeatures`.
+- **Let the draft decide the delivery.** The draft's existing delivery wins over what was inferred from the Required inputs:
+  - `linkedFeatures` non-empty → **Delivery = `flag`**, and the flag name is `linkedFeatures[0]` (reuse path in 4A; if the experiment-ref rule is already on it, 4A skips straight to step 5).
+  - `hasVisualChangesets: true` → **Delivery = `visual`** (4B reuses the changeset).
+  - Both set → halt; a draft with two delivery methods was assembled by hand in the UI and this workflow shouldn't add to it.
+  - Neither set → keep the inferred delivery.
+  If the draft's delivery contradicts what the user asked for (they named a flag but the draft is a visual experiment, or vice versa), stop and say so rather than adding a second delivery method — an experiment with both a flag rule and a changeset serves the change twice.
 - **If `datasource` is empty** — the usual state for a draft made in the Visual Editor extension — fill it in. The update endpoint takes no `templateId`, so run step 2 (or read the chosen template's `datasource`, `exposureQueryId`, `goalMetrics` from step 1) and send the fields explicitly:
 
 ```bash
@@ -206,7 +212,7 @@ echo '{
 
 ### 4. Delivery
 
-Branch on **Delivery**.
+Branch on **Delivery** — the value fixed in step 3-alt when adopting a draft, otherwise the inferred one. Never run both branches on one experiment.
 
 #### 4A. Feature flag
 
