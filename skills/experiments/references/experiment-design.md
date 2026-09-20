@@ -22,7 +22,7 @@ Help the user produce an experiment spec that's actually launchable. Walk them t
 
    Push for specificity if the hypothesis is vague. "We think users will like it" doesn't say which metric — engagement could mean five different things. "If we move the CTA above the fold, then click-through will increase, because users decide whether to engage before they scroll" gives the prediction something concrete to land against.
 
-2. **Define variations.** Default to two: control (current state) and treatment (the change). Three or more variations are valid but cost statistical power; ask the user whether they really need a third. Number variations from 0 (control) to N.
+2. **Define variations.** Default to two: control (current state) and treatment (the change). Three or more variations are valid but cost statistical power; ask the user whether they really need a third. Number variations from 0 (control) to N. If the test will run through the Visual Editor (a page on a site whose code the team doesn't control), each treatment's description is the plain-English *what and where* of the change — "shorter, more urgent hero headline" — since that description is what launch prompts GrowthBook with.
 
 3. **Pick goal metrics (ideally one, two max).** List available templates and available metrics:
 
@@ -78,6 +78,7 @@ Help the user produce an experiment spec that's actually launchable. Walk them t
    **Estimated sample size:** <N> per variation
    **Estimated duration:** <D> days at <T> visitors/day on the affected surface
    **Project:** <project id>
+   **Delivery:** feature flag `<flag-key>` | visual — `<page URL>`
    **Tracking key suggestion:** <kebab-case-name>
    ```
 
@@ -93,7 +94,7 @@ Help the user produce an experiment spec that's actually launchable. Walk them t
 - **Suggest an A/A test for first-time experimenters.** If the org has no stopped experiments (check via `references/experiment-brainstorm.md`, or the **feature-flags** skill's `flag-search` workflow), GrowthBook recommends an A/A test first to validate the implementation before running a real one.
 - **Day-of-week effects matter.** Push back on experiment durations under one full week. Weekend traffic and behavior differ from weekday traffic.
 - **Don't launch from this skill.** Final spec → user confirms → hand off to `references/experiment-launch.md`. Resist scope creep.
-- **Tracking-key naming is permanent.** Suggest kebab-case derived from the experiment name. The launch step will use this as `trackingKey`; it lands in event data and can't be cleanly changed later.
+- **Tracking-key naming is permanent.** Suggest kebab-case derived from the experiment name. The launch step uses this as `trackingKey` (on the flag path it uses the flag key instead); it lands in event data and can't be cleanly changed later.
 
 ## Endpoints used
 

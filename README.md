@@ -40,10 +40,9 @@ The full flag lifecycle. Flag changes go through a draft revision before going l
 | --- | --- |
 | `experiment-brainstorm` | Propose new experiment ideas grounded in your team's past stopped-experiment history. |
 | `experiment-design` | Walk through hypothesis, variations, primary metric, guardrails, and sample size to produce a launchable spec. Reads only. |
-| `experiment-launch` | End-to-end launch: create the experiment, prep or reuse the feature flag, wire the experiment-ref rule, and call `/start`. Handles approval and pre-launch checklist failure paths. |
+| `experiment-launch` | End-to-end launch: create the experiment (or adopt a draft), wire the delivery — a feature-flag experiment-ref rule, or a Visual Editor changeset described in plain English — check the pre-launch checklist, and call `/start`. Handles approval and checklist failure paths. |
 | `experiment-analyze` | Trigger a fresh snapshot, poll until ready, then interpret results (SRM check, lifts, CIs, guardrails). |
 | `experiment-stop` | Stop a running experiment, optionally declaring a winner and enabling a temporary rollout. Full post-stop flag disposition guidance. |
-| `experiment-visual-editor` | Build an A/B test on a live page from a plain-language description of the change — headline, CTA, banner, imagery — via GrowthBook's visual-editor AI. Leaves a draft for `experiment-launch` to start. |
 | `learnings` | Search, read, and record Learnings — durable conclusions drawn across multiple experiments. Check before designing a test; record after one generalizes. |
 
 ### `analytics`
@@ -122,7 +121,7 @@ You don't invoke workflows directly — the domain skill picks one from your req
 - **Experiment-first:** `learnings` (what do we already know?) → `experiment-design` → `experiment-launch` → `experiment-analyze` → `experiment-stop` → `flag-cleanup`, recording back to `learnings` when a result generalizes
 - **Flag-first:** `flag-create` → `flag-toggle` → `flag-targeting` → `flag-ramp` / `flag-monitoring` → `flag-cleanup`
 - **Experiment on an existing flag:** `flag-experiment` → `experiment-launch` (reuses the existing flag) → `experiment-stop` → `flag-cleanup`
-- **Visual test on a live page:** `experiment-visual-editor` (creates the draft and writes the changes) → `experiment-launch` (metrics and `/start`) → `experiment-analyze` → `experiment-stop`
+- **Visual test on a live page:** `experiment-launch` with `visual` delivery (template, metrics, changeset, plain-English variations, `/start`) → `experiment-analyze` → `experiment-stop`
 - **Analytics:** `metric-search` → `analytics-explore` → `experiment-design` (when a chart surfaces something worth testing)
 - **Metric setup:** `metric-search` (does it exist?) → `metric-create` → `analytics-explore` (sanity-check the numbers) → `experiment-design`
 - **Dashboards:** `metric-search` → `analytics-explore` (check one chart reads right) → `dashboard-create` → `dashboard-edit` (as the questions change)
@@ -179,7 +178,6 @@ skills/
     references/
       experiment-brainstorm.md  experiment-design.md  experiment-launch.md
       experiment-analyze.md     experiment-stop.md    learnings.md
-      experiment-visual-editor.md
   analytics/
     SKILL.md
     references/
