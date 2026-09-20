@@ -282,7 +282,7 @@ Do **not** publish the revision here. Step 6's `/start` call auto-publishes the 
 
 #### 4B. Visual Editor
 
-These `/visual-editor/*` endpoints need a **Personal Access Token**; an org Secret Key is rejected with a message about attribution. Route to **gb-setup** rather than treating it as a permissions problem. `ai/edit` is also the `ai-suggestions` commercial feature (Pro/Enterprise) and needs an AI provider key configured under **Settings → AI** — a plan or provider error is not a permissions problem either.
+These `/visual-editor/*` endpoints need a **Personal Access Token**; an org Secret Key is rejected with a message about attribution. Route to **gb-setup** rather than treating it as a permissions problem. `ai/edit` requires the organization to opt-in to AI features on **Settings → AI** before use.
 
 **4B-i. Check for a collision on the same page.**
 
@@ -323,12 +323,11 @@ The field is **`variationId`** (the `var_...` string from step 3), not the varia
 From the response: show `explanation`; confirm `saved: true` and a `visualChangeId`, whose absence means nothing was written; summarise `mutations`/`css`/`js` rather than dumping them; surface `warnings` (capped or failed image generation — the text edits still applied).
 
 - **Images need no extra call.** "Replace the hero image with a photo of a team collaborating" is generated, stored, and referenced inside this one request.
-- **One answer per prompt.** With `persist` there's no chooser, so "give me three headlines" returns one. Re-prompt for a different take.
 - **To refine**, prompt again with the same `variationId` — mutations accumulate, `css`/`js` are rewritten whole. Pass `conversationHistory` (max 12 `{"role": "user"|"assistant", "text": "..."}` turns) so "less neon" resolves against the previous turn.
 - **A third variation**: `POST /api/v1/visual-editor/add-variant` with `{"visualChangesetId": "<id>"}`, then prompt its `newVariationId`.
 - **Grounding is best-effort and silent.** If GrowthBook can't fetch or parse the page (login wall, client-rendered app, redirect), it still attempts changes blind (e.g. assuming an `h1` exists). The user must preview before starting.
 
-Preview link for the user: `<page URL>?gb-visual-editor-v2=<visualChangeset.id>` (opens the changeset in the Visual Editor extension).
+Preview link for the user: `<page URL>?gb-visual-editor-v2=<visualChangeset.id>` (requires the Visual Editor Chrome extension).
 
 ### 5. Check the pre-launch checklist and pause for QA
 

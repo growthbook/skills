@@ -11,7 +11,7 @@ Every API payload, endpoint path, statistical recommendation, lifecycle claim, o
 These live in a local checkout of the GrowthBook monorepo, referred to below as `<growthbook>`. It's typically cloned as a sibling of this repo (i.e. `../growthbook`); if you don't find it there, ask where the checkout lives rather than guessing.
 
 1. **Back-end source code** — `<growthbook>/packages/back-end/src/api/` and `<growthbook>/packages/shared/src/validators/`. The Zod validators here are the final authority on payload shapes, required fields, and accepted enum values. If docs and code disagree, the code wins.
-2. **Docusaurus docs** — `<growthbook>/docs/`. The canonical source for statistical methodology, lifecycle guidance, and "best practices we learned the hard way." Map of where things live:
+2. **Mintlify docs** — `<growthbook>/docs/`. The canonical source for statistical methodology, lifecycle guidance, and "best practices we learned the hard way." Map of where things live:
 
    | Topic | Doc path |
    | --- | --- |
