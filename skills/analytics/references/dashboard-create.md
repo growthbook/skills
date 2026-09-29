@@ -106,7 +106,7 @@ One POST with the whole thing. Show the user the payload and get confirmation fi
 echo '<dashboard-json>' | gb-call POST /api/v2/dashboards -
 ```
 
-Leave `owner` out, as below, and the dashboard belongs to whoever the API key belongs to. Add `"owner": "<email or userId>"` only when the user names someone else to own it, and pass exactly what they gave you.
+Leave `owner` out, as below, and the dashboard belongs to whoever the API key belongs to. Add `"owner": "<email or userId>"` only when the user names someone else to own it, and pass exactly what they gave you. That has to be an email or a `u_...` id. If they gave only a name ("make Priya the owner"), ask for her email before creating. A name is rejected, and don't guess an email from it.
 
 ```json
 {
@@ -153,7 +153,7 @@ The response is `{ "dashboard": { "id": "dash_...", ... } }`. Report what is on 
 
 **Required top-level fields:** `title`, `editLevel`, `shareLevel`, `enableAutoUpdates`, `blocks`. `projects`, `globalControls`, `comparison`, and `owner` are optional.
 
-- `owner` — a userId (`u_...`) or the email of an organization member. Omit it for the caller. An email that matches no member is rejected, and so is `""`. Omit `experimentId` — a general dashboard has none, and setting it makes an experiment dashboard instead.
+- `owner` — a userId (`u_...`) or the email of an organization member. Omit it for the caller. A display name, an email that matches no member, and `""` are all rejected. Omit `experimentId` — a general dashboard has none, and setting it makes an experiment dashboard instead.
 
 - `editLevel` — `"private"` (only you can edit) or `"published"` (members with permission can). Default to `"private"`.
 - `shareLevel` — same two values, for viewing. Default to `"private"`; the user can publish it afterwards.

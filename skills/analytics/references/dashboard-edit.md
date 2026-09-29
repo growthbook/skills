@@ -66,7 +66,7 @@ Start from the blocks you just read and change only what was asked. What you sen
 | Rename the dashboard | Send `title`. |
 | Change the timeframe | Send `globalControls.dateRange`. Only the nine `predefined` names below are real; anything else is `customLookback`. |
 | Turn comparison on | Send `comparison`. |
-| Change the owner | Only when the user asks. Send `{ "owner": "<email or userId>" }` and nothing else, using exactly what the user gave. Confirm first. |
+| Change the owner | Only when the user asks. Send `{ "owner": "<email or userId>" }` and nothing else, using exactly what the user gave. It must be an email or a `u_...` id; a bare name is rejected, so ask for the email instead of guessing one. Confirm first. |
 
 **`markdown` blocks on a saved dashboard are the user's words.** Carry every one through verbatim and in place, however many there are. Add or reword one only when the user asks — a dashboard with none may well have had one removed on purpose. If your change leaves a legend describing a chart that is gone, say so in your reply and offer to update it, leaving their words as they are.
 
