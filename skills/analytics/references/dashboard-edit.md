@@ -47,6 +47,8 @@ gb-call GET /api/v1/dashboards/<id>
 
 Capture `title`, `projects`, `globalControls`, `comparison`, and the full `blocks` array. Each stored block carries `id`, `uid`, `organization`, `layout`, and — on a chart block — `explorerAnalysisId` and `config`.
 
+The response also carries `owner` (a userId) and `ownerEmail`. Use them to tell the user who owns the dashboard, but never copy either into the update body. An empty `owner` means the dashboard was created through the old v1 endpoint with a secret key and has no owner. Tell the user that, and offer to set one. Don't set it unless they say yes.
+
 ### 3. Apply the change
 
 Start from the blocks you just read and change only what was asked. What you send for each one depends on whether you touched it:
@@ -64,8 +66,11 @@ Start from the blocks you just read and change only what was asked. What you sen
 | Rename the dashboard | Send `title`. |
 | Change the timeframe | Send `globalControls.dateRange`. Only the nine `predefined` names below are real; anything else is `customLookback`. |
 | Turn comparison on | Send `comparison`. |
+| Change the owner | Only when the user asks. Send `{ "owner": "<email or userId>" }` and nothing else, using exactly what the user gave. Confirm first. |
 
 **`markdown` blocks on a saved dashboard are the user's words.** Carry every one through verbatim and in place, however many there are. Add or reword one only when the user asks — a dashboard with none may well have had one removed on purpose. If your change leaves a legend describing a chart that is gone, say so in your reply and offer to update it, leaving their words as they are.
+
+**Changing the owner is its own write.** Before sending it, tell the user who owns the dashboard now and who will own it after. Only the current owner or an admin can change it. The new owner must be an organization member with permission to manage the dashboard. A private dashboard is visible only to its owner, so handing one to someone else can take it out of the user's view. A 400 naming the owner means one of those checks failed. Say which one, and don't retry with a different value.
 
 For block shapes, the config schema, and the layout arithmetic, read `references/dashboard-create.md`.
 
@@ -87,6 +92,8 @@ Show the user what changes before the PUT: which tiles are being added, which re
 ## What each field does when omitted
 
 Every field on an update is optional, and leaving one out keeps the saved value. That makes a narrow change genuinely narrow — a timeframe change needs `globalControls` alone.
+
+That includes `owner`: leave it out and the dashboard keeps its owner. There is no "set it to the same value to be safe." An `owner` in the body is a request to reassign the dashboard, and for an admin it succeeds without a warning.
 
 The exception is `blocks`. Send it and it replaces the list; omit it and every tile is left alone.
 
@@ -124,14 +131,15 @@ These re-runs are best-effort, unlike the blocks you sent in full. A carried til
 - **The closed `predefined` list applies twice here**: to `globalControls.dateRange` and to each block's `config.dateRange`. The names are in the router's shared conventions; anything outside them is `customLookback`, so six months is `{ "predefined": "customLookback", "lookbackValue": 6, "lookbackUnit": "month" }` in both places.
 - **A chart you sent in full and cannot run fails the whole update.** Nothing is written, and the error names the block. Fix that config and call again. A tile you carried by id is the other case: it is only re-run when a dashboard-wide setting changed, and a failure there is logged server-side rather than returned, leaving the tile on its previous result.
 - **A failed comparison never fails a write, and never leaves a stale one behind.** Only the primary query does. A chart whose compare-to-previous-period run fails — or whose comparison you just turned off — is saved with no comparison at all rather than the previous run's, so a tile can come back showing a single series where the user asked for two.
+- **Never send `owner` unless the user asked to change the owner.** Not the current user's email, not the value from the `GET`, and not as part of any other edit. When building a body from a `GET` response, remove `owner` and `ownerEmail`. An admin's write with a wrong `owner` silently reassigns the dashboard. An empty `owner` from the `GET` is something to report to the user, not something to fix.
 - **Leave `experimentId` out of the update.** It is rejected there, and a general dashboard has none.
 - **Renaming a tile is not renaming the dashboard.** A block's `title` is the tile heading; the dashboard's `title` is the page name.
 
 ## Endpoints used
 
 - `GET /api/v1/dashboards` — list dashboards
-- `GET /api/v1/dashboards/:id` — read one, including its blocks
-- `PUT /api/v1/dashboards/:id` — write the change (`409` if the dashboard changed since your `GET`)
+- `GET /api/v1/dashboards/:id` — read one, including its blocks, `owner`, and `ownerEmail`
+- `PUT /api/v1/dashboards/:id` — write the change (`409` if the dashboard changed since your `GET`). This is the only update endpoint; there is no v2 `PUT`. `owner` is accepted only when the user asked to reassign the dashboard.
 - `DELETE /api/v1/dashboards/:id` — delete a dashboard, when the user explicitly asks for that
 - `GET /api/v1/fact-metrics` and `GET /api/v1/fact-tables/:id` — when the change needs a metric or column the conversation has not resolved
 
