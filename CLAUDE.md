@@ -11,7 +11,7 @@ Every API payload, endpoint path, statistical recommendation, lifecycle claim, o
 These live in a local checkout of the GrowthBook monorepo, referred to below as `<growthbook>`. It's typically cloned as a sibling of this repo (i.e. `../growthbook`); if you don't find it there, ask where the checkout lives rather than guessing.
 
 1. **Back-end source code** — `<growthbook>/packages/back-end/src/api/` and `<growthbook>/packages/shared/src/validators/`. The Zod validators here are the final authority on payload shapes, required fields, and accepted enum values. If docs and code disagree, the code wins.
-2. **Docusaurus docs** — `<growthbook>/docs/docs/`. The canonical source for statistical methodology, lifecycle guidance, and "best practices we learned the hard way." Map of where things live:
+2. **Mintlify docs** — `<growthbook>/docs/`. The canonical source for statistical methodology, lifecycle guidance, and "best practices we learned the hard way." Map of where things live:
 
    | Topic | Doc path |
    | --- | --- |
@@ -172,7 +172,9 @@ The "Guardrails" section is where you document things the REST API will not enfo
 - Don't mix `templateId` with `datasourceId`/`assignmentQueryId` (experiment-launch)
 - Multiple-comparison correction is frequentist-only and excludes guardrails (experiment-analyze)
 - Bayesian (default engine) reports Chance to Win + Credible Intervals; frequentist reports CIs. Don't manufacture a p-value (experiment-analyze)
-- `/start` failure body is the canonical source for "what's wrong" — there is no `start-checklist` GET (experiment-launch)
+- `GET /experiments/<id>/start-checklist` is the pre-flight; the `/start` failure body is the post-hoc reason; `skipChecklist` never clears `hardBlock` items (experiment-launch)
+- `templateId` is create-only — `POST /experiments/<id>` has no template field, so adopting an existing draft means re-sending the template's datasource, assignment query, and metrics explicitly; `datasourceId` is settable only while the draft has none (experiment-launch)
+- `/api/v1/visual-editor/*` endpoints require a Personal Access Token; an org Secret Key is rejected (experiment-launch)
 - The v2 rule-edit handler **rejects** explicit `type` changes but **auto-flips** `force` ↔ `rollout` based on effective coverage (flag-targeting)
 - `experimentId` and `variations` on an `experiment-ref` rule are API-allowed but skill-gated (warn-and-confirm) because they cause silent drift between the flag rule and the experiment (flag-targeting)
 - A `409` on revision publish means the draft's base is stale; don't auto-rebase, halt and let the user resolve (flag-targeting)

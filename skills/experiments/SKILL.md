@@ -1,6 +1,6 @@
 ---
 name: experiments
-description: Design, launch, analyze, and stop GrowthBook A/B tests, and search or record durable Learnings across experiments. Use for experiments, split tests, variations, hypotheses, sample size, guardrail metrics, SRM, chance to win, lift, declaring a winner, "what have we learned", "have we tested this before", or "record this learning". For bandits, identify them and direct the user to GrowthBook UI. For feature flags and rollouts, use feature-flags. For product analytics or metric catalog work, use analytics. For API key configuration, use gb-setup.
+description: Design, launch, analyze, and stop GrowthBook A/B tests, and search or record durable Learnings across experiments. Use for experiments, split tests, variations, hypotheses, sample size, guardrail metrics, SRM, chance to win, lift, declaring a winner, "what have we learned", "have we tested this before", or "record this learning". Also use to build Visual Editor experiments on a live web page from a description of the change — "A/B test this page", "test a shorter headline", "try a green CTA", "add a banner" — including AI-generated images. For bandits, identify them and direct the user to GrowthBook UI. For feature flags and rollouts, use feature-flags. For product analytics or metric catalog work, use analytics. For API key configuration, use gb-setup.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *), Bash(sleep *)
 ---
 
@@ -8,7 +8,7 @@ allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *), Bash(sleep *)
 
 Domain router for GrowthBook experiments and the durable Learnings distilled from them. Each workflow lives in a reference file under `references/`. Read this router, pick the workflow that matches where the user is, then read that one file and follow it.
 
-Experiments use the **v1 API** (`/api/v1/experiments`). When a workflow also touches a feature flag, the flag calls are v2 — the reference file spells out which is which.
+Experiments use the **v1 API** (`/api/v1/experiments`). The only v2 calls in this domain are the feature-flag delivery steps of `experiment-launch` (step 4A); the reference file marks them.
 
 All API calls go through the bundled helper. Under the Claude Code plugin install, it lives at `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call` (the plugin root). Under `npx skills install`, it lives at `scripts/gb-call` relative to this skill's directory. Resolve that path once and substitute it whenever a reference example says `gb-call`; do not assume `gb-call` is on `PATH`. It reads `GB_API_KEY` from the environment first, then falls back to `~/.config/growthbook/.env` (written by **gb-setup**); environment variables take precedence.
 
@@ -24,12 +24,14 @@ These workflows target `type: "standard"` experiments. GrowthBook's REST API als
 | --- | --- |
 | `references/experiment-brainstorm.md` | Get ideas for what to test, grounded in past stopped experiments (proposes only) |
 | `references/experiment-design.md` | Turn an idea into a launchable spec — hypothesis, variations, metrics, sample size (writes nothing) |
-| `references/experiment-launch.md` | Create the experiment, prep or reuse the flag, wire the experiment-ref rule, and start it |
+| `references/experiment-launch.md` | Create the experiment (or adopt a draft), wire the delivery — a feature-flag rule, or a Visual Editor changeset described in plain English — check the pre-launch checklist, and start it |
 | `references/experiment-analyze.md` | Read results — refresh the snapshot if stale, then interpret (read-only) |
 | `references/experiment-stop.md` | Stop a running experiment, optionally declare a winner and roll it out |
 | `references/learnings.md` | Search and read prior conclusions, or create, update, and delete curated Learnings across experiments |
 
 If the user has an idea but no hypothesis, start at `experiment-design`; it routes back to `experiment-brainstorm` when the idea needs grounding. If they hand you a name rather than an ID, `experiment-analyze` and `experiment-stop` both open with a resolve-by-name step.
+
+A URL plus a visible change is `experiment-launch` with `visual` delivery; a code path behind a feature flag is `experiment-launch` with `flag` delivery. Launch infers which from context and prefers a flag whenever the user controls the code.
 
 ## Methodology authority
 
