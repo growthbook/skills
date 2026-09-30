@@ -8,7 +8,7 @@ allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *), Bash(sleep *)
 
 Domain router for GrowthBook Product Analytics, Analytics dashboards, and the metric catalog. The workflows live in `references/`. Read this router, pick one, then read that file and follow it.
 
-Analytics uses the **v1 API** — `/api/v1/product-analytics/search`, `/columns`, and `/column-values` for discovery, the metric, fact-table, data-source, and funnel `/api/v1/product-analytics/*-exploration` endpoints for charts, `/api/v1/product-analytics/explorations/:id` for polling, `/dashboards` for saved pages of charts, and `/fact-metrics` and `/fact-tables` for the catalog. The API also exposes SQL explorations, but this skill does not construct or execute arbitrary SQL exploration payloads.
+Analytics uses the **v1 API** — `/api/v1/product-analytics/search`, `/columns`, and `/column-values` for discovery, the metric, fact-table, data-source, and funnel `/api/v1/product-analytics/*-exploration` endpoints for charts, `/api/v1/product-analytics/explorations/:id` for polling, `/dashboards` for saved pages of charts (except create, which is `POST /api/v2/dashboards`; the v1 create is deprecated), and `/fact-metrics` and `/fact-tables` for the catalog. The API also exposes SQL explorations, but this skill does not construct or execute arbitrary SQL exploration payloads.
 
 All API calls go through the bundled helper. Under the Claude Code plugin install, it lives at `${CLAUDE_PLUGIN_ROOT}/scripts/gb-call` (the plugin root). Under `npx skills install`, it lives at `scripts/gb-call` relative to this skill's directory. Resolve that path once and substitute it whenever a reference example says `gb-call`; do not assume `gb-call` is on `PATH`. It reads `GB_API_KEY` from the environment first, then falls back to `~/.config/growthbook/.env` (written by **gb-setup**); environment variables take precedence.
 
@@ -50,6 +50,7 @@ Use `sql-query.md` only when the question can't be answered with existing metric
 - **Restyling a chart is free.** Cache matching ignores `chartType`, so a different chart type on the same query is a cache hit. Never re-query just to restyle.
 - **A dashboard's chart blocks carry a `config`, not a result.** The create and update calls run every chart server-side, so never POST an exploration first just to get an id for a tile.
 - **An update replaces a dashboard's whole block list.** Read the dashboard in the same turn you write it, and list every tile being kept — but carry an unchanged one as `{ "id": "dshblk_…" }` rather than copying it back in full, and list each id at most once.
+- **A dashboard's `owner` changes only when the user asks.** Create on `POST /api/v2/dashboards` without `owner`, which defaults to the API key's user, unless the user names someone else. Never put `owner` or `ownerEmail` in an update body unless the user asked to reassign the dashboard. For an admin, a stray `owner` silently hands the dashboard to someone else.
 - **Dashboards are not scoped to a datasource** the way metrics and explorations are, but every chart on one is.
 
 ## Read-only vs. write
