@@ -11,10 +11,9 @@ import {
   checkFile,
   collectPrs,
   guardEdits,
-  parseState,
   pickTarget,
   renderPrompt,
-  shouldRun,
+  lastSyncTime,
 } from "./sync.mjs";
 
 const SKILL = [
@@ -196,20 +195,31 @@ test("adds to a paired PR only when the run covers that GrowthBook PR alone", ()
   );
 });
 
-test("skips a run when nothing is new", () => {
-  const report = {
-    missing: [{ file: "skills/a.md", method: "GET", path: "/v2/x" }],
-    deprecated: [],
-  };
-  const reviewed = ["skills/a.md|GET|/v2/x"];
-  assert.equal(shouldRun({ commits: 0, report, reviewed }), false);
-  assert.equal(shouldRun({ commits: 1, report, reviewed }), true);
-  assert.equal(shouldRun({ commits: 0, report, reviewed: [] }), true);
-  assert.deepEqual(parseState('{"growthbook":"abc","reviewed":["k"]}'), {
-    growthbook: "abc",
-    reviewed: ["k"],
-  });
-  assert.equal(parseState("not json"), null);
+test("the review window starts an hour before the last successful real run", () => {
+  const runs = [
+    {
+      conclusion: null,
+      display_title: "Sync with GrowthBook",
+      run_started_at: "2026-10-05T14:00:00Z",
+    },
+    {
+      conclusion: "success",
+      display_title: "Dry run: Sync with GrowthBook",
+      run_started_at: "2026-10-04T14:00:00Z",
+    },
+    {
+      conclusion: "failure",
+      display_title: "Sync with GrowthBook",
+      run_started_at: "2026-10-03T14:00:00Z",
+    },
+    {
+      conclusion: "success",
+      display_title: "Sync with GrowthBook",
+      run_started_at: "2026-10-02T14:00:00Z",
+    },
+  ];
+  assert.equal(lastSyncTime(runs), "2026-10-02T13:00:00.000Z");
+  assert.equal(lastSyncTime(runs.slice(0, 3)), null);
 });
 
 test("renders every placeholder and rejects unknown ones", () => {

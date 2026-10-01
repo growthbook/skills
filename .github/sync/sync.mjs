@@ -2,16 +2,15 @@
 /**
  * Helpers for .github/workflows/sync-from-growthbook.yml.
  *
- *   range        Resolve the GrowthBook commits to review since the last sync.
+ *   last-sync    Find when this workflow last succeeded, from its run list.
+ *   range        Resolve the GrowthBook commits to review since then.
  *   prs          Turn commit-to-PR lookups into the PR list and a commit map.
  *   pick-target  Choose the PR this run adds to.
- *   should-run   Decide whether there is anything new to review.
  *   changes      Write each reviewed commit's diff for the model to read.
  *   prompt       Render prompt.md with this run's inputs.
  *   guard        Reject skill edits that break the authoring rules.
  *   section      Write the PR description section and commit message.
  *   body         Build the PR description or comment for the target.
- *   state        Print the sync state to record after a successful run.
  *
  * The workflow copies this directory, the GrowthBook drift checker, and the
  * spec to a trusted directory before the model runs, and runs every command
@@ -38,7 +37,8 @@ const MAX_FILES = 8;
 const DESCRIPTION_LIMIT = 1024;
 const BODY_LIMIT = 60000;
 const DIFF_LIMIT = 150000;
-export const STATE_TAG = "sync-state";
+export const DRY_RUN_PREFIX = "Dry run";
+const OVERLAP_MS = 60 * 60 * 1000;
 
 // Each pattern is checked against added lines only. None of them matches the
 // human-written skills, so a hit means the edit reads differently from the
@@ -152,74 +152,45 @@ export function watchPaths(text) {
     .filter((line) => line && !line.startsWith("#"));
 }
 
-export function parseState(text) {
-  try {
-    const state = JSON.parse(text);
-    if (typeof state.growthbook === "string") {
-      return { growthbook: state.growthbook, reviewed: state.reviewed ?? [] };
-    }
-  } catch {
-    // An unreadable state means a full catch-up from the default window.
-  }
-  return null;
-}
-
-export const findingKey = ({ file, method, path: refPath }) =>
-  `${file}|${method}|${refPath}`;
-
-export function findingKeys(report) {
-  return [...report.missing, ...report.deprecated].map(findingKey).sort();
-}
-
-// Every finding is already known and no watched commit is new, so a model
-// run would only repeat the last one.
-export function shouldRun({ commits, report, reviewed }) {
-  if (commits > 0) return true;
-  const known = new Set(reviewed);
-  return findingKeys(report).some((key) => !known.has(key));
+// The window starts at the latest successful non-dry run, an hour early so a
+// commit merged while that run was starting is reviewed again rather than
+// skipped. Runs are newest first, as the Actions API lists them.
+export function lastSyncTime(runs) {
+  const run = runs.find(
+    (r) =>
+      r.conclusion === "success" &&
+      !(r.display_title ?? "").startsWith(DRY_RUN_PREFIX),
+  );
+  if (!run) return null;
+  return new Date(Date.parse(run.run_started_at) - OVERLAP_MS).toISOString();
 }
 
 function range() {
-  const skillsDir = env("SKILLS_DIR");
   const growthbookDir = env("GROWTHBOOK_DIR");
   const trusted = env("TRUSTED");
   const syncDir = env("SYNC_DIR");
   const after = git(growthbookDir, "rev-parse", "HEAD").trim();
-  let stateText = "";
-  try {
-    stateText = git(
-      skillsDir,
-      "for-each-ref",
-      `refs/tags/${STATE_TAG}`,
-      "--format=%(contents)",
-    );
-  } catch {
-    stateText = "";
-  }
-  const state = parseState(stateText.trim());
-  const isAncestor = (sha) => {
-    try {
-      git(growthbookDir, "merge-base", "--is-ancestor", sha, after);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  let before = process.env.SINCE || null;
-  if (!before && state && isAncestor(state.growthbook))
-    before = state.growthbook;
+  const since = process.env.LAST_SYNC || "7 days ago";
+  let before = process.env.SINCE || "";
   if (!before) {
     before = git(
       growthbookDir,
       "rev-list",
       "-1",
-      "--before=7 days ago",
+      `--before=${since}`,
       after,
     ).trim();
   }
-  if (!/^[0-9a-f]{7,40}$/.test(before) || !isAncestor(before)) {
+  let isAncestor = false;
+  try {
+    git(growthbookDir, "merge-base", "--is-ancestor", before, after);
+    isAncestor = /^[0-9a-f]{7,40}$/.test(before);
+  } catch {
+    isAncestor = false;
+  }
+  if (!isAncestor) {
     throw new Error(
-      `Cannot review from ${before}: not an ancestor of ${after}`,
+      `Cannot review from "${before}": not an ancestor of ${after}`,
     );
   }
   const paths = watchPaths(
@@ -246,10 +217,6 @@ function range() {
       "show",
       `${before}:packages/back-end/generated/spec.yaml`,
     ),
-  );
-  writeFileSync(
-    path.join(trusted, "reviewed.json"),
-    JSON.stringify(state?.reviewed ?? []),
   );
   output({ before, after, commits: commits.length });
 }
@@ -768,18 +735,15 @@ function body() {
   writeFileSync(path.join(syncDir, "body.md"), text);
 }
 
-function state() {
-  const report = JSON.parse(readFileSync(env("REPORT"), "utf8"));
-  process.stdout.write(
-    JSON.stringify({ growthbook: env("AFTER"), reviewed: findingKeys(report) }),
-  );
-}
-
 function main() {
   const [command] = process.argv.slice(2);
   if (command === "range") return range();
   if (command === "guard") return guard();
-  if (command === "state") return state();
+  if (command === "last-sync") {
+    const [, file] = process.argv.slice(2);
+    const runs = JSON.parse(readFileSync(file, "utf8"));
+    return output({ last_sync: lastSyncTime(runs.workflow_runs ?? runs) });
+  }
   const syncDir = env("SYNC_DIR");
   if (command === "pick-target") {
     const report = readJson(path.join(syncDir, "drift-main.json"), null);
@@ -800,16 +764,6 @@ function main() {
       number: target.number,
       branch: target.branch,
     });
-  }
-  if (command === "should-run") {
-    const run = shouldRun({
-      commits: Number(env("COMMITS")),
-      report: JSON.parse(
-        readFileSync(path.join(syncDir, "drift.json"), "utf8"),
-      ),
-      reviewed: readJson(path.join(env("TRUSTED"), "reviewed.json"), []),
-    });
-    return output({ run });
   }
   if (command === "changes") return changes();
   if (command === "prs") {

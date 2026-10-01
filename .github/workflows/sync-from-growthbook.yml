@@ -1,8 +1,9 @@
 name: Sync with GrowthBook
+run-name: "${{ inputs.dry_run && 'Dry run: Sync with GrowthBook' || 'Sync with GrowthBook' }}"
 
-# Each run reviews every watched GrowthBook commit since the last successful
-# run (recorded in the sync-state tag), so a cancelled or failed run loses
-# nothing; the next one picks up its range.
+# Each run reviews every watched GrowthBook commit merged since this workflow
+# last succeeded, so a cancelled or failed run loses nothing; the next one
+# covers its range. Dry runs don't count as syncs.
 on:
   repository_dispatch:
     types: [growthbook-api-changed]
@@ -11,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       since:
-        description: GrowthBook commit to review from (default is the last synced commit)
+        description: GrowthBook commit to review from (default is the last successful run)
         required: false
       dry_run:
         description: Show the PR in the job summary instead of pushing
@@ -81,8 +82,14 @@ jobs:
       - name: Resolve the commit range
         id: scope
         env:
+          GH_TOKEN: ${{ github.token }}
           SINCE: ${{ inputs.since }}
-        run: node "$TRUSTED/sync.mjs" range | tee -a "$GITHUB_OUTPUT"
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/sync-from-growthbook.yml/runs?branch=main&per_page=50" \
+            > "$SYNC_DIR/runs.json"
+          LAST_SYNC=$(node "$TRUSTED/sync.mjs" last-sync "$SYNC_DIR/runs.json" | sed -n 's/^last_sync=//p')
+          echo "Last successful sync started at: ${LAST_SYNC:-none (reviewing the last 7 days)}"
+          LAST_SYNC="$LAST_SYNC" node "$TRUSTED/sync.mjs" range | tee -a "$GITHUB_OUTPUT"
 
       # The sync PR links each of these, which also adds a backlink on the
       # GrowthBook PR. A growthbook/skills link in a PR description pairs that
@@ -123,6 +130,8 @@ jobs:
           fi
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      # Skip the model when no watched commit is new. A manual run always
+      # reviews, which also re-checks standing drift on demand.
       - name: Drift report
         id: drift
         env:
@@ -135,7 +144,11 @@ jobs:
               --base-spec "$TRUSTED/base-spec.yaml" $flag > "$SYNC_DIR/drift.$format"
           done
           cat "$SYNC_DIR/drift.md" >> "$GITHUB_STEP_SUMMARY"
-          node "$TRUSTED/sync.mjs" should-run | tee -a "$GITHUB_OUTPUT"
+          if [ "$COMMITS" != "0" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No new watched GrowthBook commits; skipping the review."
+          fi
 
       - name: Prepare the model inputs
         id: prompt
@@ -282,16 +295,3 @@ jobs:
           else
             gh issue create -R "$GITHUB_REPOSITORY" --title "$QUESTIONS_TITLE" --body-file "$SYNC_DIR/questions-body.md"
           fi
-
-      - name: Record the sync state
-        if: env.DRY_RUN != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          AFTER: ${{ steps.scope.outputs.after }}
-        run: |
-          node "$TRUSTED/check.mjs" --skills skills --spec "$TRUSTED/spec.yaml" --json > "$TRUSTED/final.json"
-          state=$(REPORT="$TRUSTED/final.json" node "$TRUSTED/sync.mjs" state)
-          git -C skills -c core.hooksPath=/dev/null -c user.name="github-actions[bot]" \
-            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            tag -f -a sync-state -m "$state" origin/main
-          git -C skills push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" refs/tags/sync-state
