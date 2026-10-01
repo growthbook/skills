@@ -1,0 +1,152 @@
+name: Sync with GrowthBook
+
+on:
+  repository_dispatch:
+    types: [growthbook-api-changed]
+  schedule:
+    - cron: "0 14 * * 1"
+  workflow_dispatch:
+    inputs:
+      since:
+        description: GrowthBook commit to review from (default is 7 days ago)
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sync-from-growthbook
+  cancel-in-progress: false
+
+env:
+  SYNC_BRANCH: sync/growthbook
+  SYNC_DIR: ${{ github.workspace }}/.sync
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout skills
+        uses: actions/checkout@v5
+        with:
+          path: skills
+          fetch-depth: 0
+
+      - name: Checkout GrowthBook
+        uses: actions/checkout@v5
+        with:
+          repository: growthbook/growthbook
+          path: growthbook
+          fetch-depth: 0
+          filter: blob:none
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - run: mkdir -p "$SYNC_DIR"
+
+      - name: Resolve the commit range
+        id: scope
+        working-directory: growthbook
+        env:
+          DISPATCH_BEFORE: ${{ github.event.client_payload.before }}
+          DISPATCH_AFTER: ${{ github.event.client_payload.after }}
+          DISPATCH_PR: ${{ github.event.client_payload.pr }}
+          SINCE: ${{ inputs.since }}
+        run: |
+          after=${DISPATCH_AFTER:-$(git rev-parse HEAD)}
+          before=${DISPATCH_BEFORE:-${SINCE:-$(git rev-list -1 --before="7 days ago" HEAD)}}
+          pr=${DISPATCH_PR:-}
+          for sha in "$before" "$after"; do
+            [[ "$sha" =~ ^[0-9a-f]{7,40}$ ]] || { echo "::error::Invalid commit: $sha"; exit 1; }
+          done
+          [[ -z "$pr" || "$pr" =~ ^[0-9]+$ ]] || { echo "::error::Invalid PR number: $pr"; exit 1; }
+          git checkout -q "$after"
+          commits=$(git log --format=%h "$before..$after" -- \
+            packages/back-end/src/api packages/shared/src/validators \
+            packages/back-end/generated/spec.yaml docs/statistics \
+            docs/experimentation-analysis docs/features docs/api/introduction.mdx \
+            docs/app/experiment-results.mdx docs/app/experiment-decisions.mdx \
+            docs/app/sticky-bucketing.mdx docs/app/metrics.mdx | wc -l)
+          {
+            echo "before=$before"
+            echo "after=$after"
+            echo "pr=$pr"
+            echo "commits=$commits"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Carry over an open sync PR
+        id: carry
+        working-directory: skills
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git ls-remote --exit-code --heads origin "$SYNC_BRANCH" > /dev/null; then
+            if git diff "origin/main...origin/$SYNC_BRANCH" | git apply --index; then
+              gh pr view "$SYNC_BRANCH" --json body --jq .body > "$SYNC_DIR/existing-pr-body.md" || true
+            else
+              echo "::warning::The open sync PR conflicts with main; its edits will be redone."
+            fi
+          fi
+
+      - name: Drift report
+        id: drift
+        env:
+          BEFORE: ${{ steps.scope.outputs.before }}
+        run: |
+          git -C growthbook show "$BEFORE:packages/back-end/generated/spec.yaml" > "$SYNC_DIR/base-spec.yaml"
+          node growthbook/scripts/check-agent-skills-drift.mjs --skills skills \
+            --spec growthbook/packages/back-end/generated/spec.yaml \
+            --base-spec "$SYNC_DIR/base-spec.yaml" > "$SYNC_DIR/drift.md"
+          cat "$SYNC_DIR/drift.md" >> "$GITHUB_STEP_SUMMARY"
+          if grep -q "No drift found." "$SYNC_DIR/drift.md"; then
+            echo "clean=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update skills with Claude
+        if: steps.scope.outputs.commits != '0' || steps.drift.outputs.clean != 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          # Dispatches may come from a GitHub App token, whose actor is a bot.
+          allowed_bots: "*"
+          prompt: |
+            Keep the GrowthBook agent skills in sync with the GrowthBook API.
+
+            - Skills checkout: `skills/`. Read `skills/CLAUDE.md` before editing.
+            - GrowthBook monorepo: `growthbook/`, checked out at ${{ steps.scope.outputs.after }}.
+            - Follow `growthbook/.claude/skills/sync-agent-skills/SKILL.md` from step 4 on.
+              Steps 1-3 are done: the drift report is at `.sync/drift.md`.
+            - Review GrowthBook commits `${{ steps.scope.outputs.before }}..${{ steps.scope.outputs.after }}`
+              that touch the API handlers, shared validators, spec, or the docs the skills cite.
+              Use `git -C growthbook log` and `git -C growthbook show` to read them.
+            - Edit only files under `skills/`. Do not commit, push, or open a PR; a later step does that.
+
+            Then write the PR description to `.sync/pr-body.md`:
+            - One bullet per skill change: the file, what changed, and the GrowthBook file
+              (handler or validator) that confirms it.
+            - Under "Not changed", findings you checked and left alone, with the reason.
+            - ${{ steps.scope.outputs.pr && format('Link https://github.com/growthbook/growthbook/pull/{0} as the trigger.', steps.scope.outputs.pr) || 'Name the commit range you reviewed.' }}
+            - If `.sync/existing-pr-body.md` exists, keep its bullets and add yours below.
+
+            If nothing needs to change, edit nothing and do not write the PR description.
+          claude_args: >-
+            --max-turns 80
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git -C growthbook log:*),Bash(git -C growthbook show:*),Bash(git -C growthbook diff:*),Bash(node growthbook/scripts/check-agent-skills-drift.mjs:*)"
+
+      - name: Open or update the sync PR
+        if: hashFiles('.sync/pr-body.md') != ''
+        uses: peter-evans/create-pull-request@v8
+        with:
+          path: skills
+          branch: ${{ env.SYNC_BRANCH }}
+          draft: true
+          title: Sync skills with GrowthBook API changes
+          commit-message: Sync skills with GrowthBook API changes
+          body-path: ${{ env.SYNC_DIR }}/pr-body.md
+          add-paths: skills/**
+          delete-branch: true

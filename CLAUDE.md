@@ -11,7 +11,7 @@ Every API payload, endpoint path, statistical recommendation, lifecycle claim, o
 These live in a local checkout of the GrowthBook monorepo, referred to below as `<growthbook>`. It's typically cloned as a sibling of this repo (i.e. `../growthbook`); if you don't find it there, ask where the checkout lives rather than guessing.
 
 1. **Back-end source code** — `<growthbook>/packages/back-end/src/api/` and `<growthbook>/packages/shared/src/validators/`. The Zod validators here are the final authority on payload shapes, required fields, and accepted enum values. If docs and code disagree, the code wins.
-2. **Docusaurus docs** — `<growthbook>/docs/docs/`. The canonical source for statistical methodology, lifecycle guidance, and "best practices we learned the hard way." Map of where things live:
+2. **Mintlify docs** — `<growthbook>/docs/`. The canonical source for statistical methodology, lifecycle guidance, and "best practices we learned the hard way." Map of where things live:
 
    | Topic | Doc path |
    | --- | --- |
@@ -22,15 +22,19 @@ These live in a local checkout of the GrowthBook monorepo, referred to below as 
    | Stats engine (Bayesian default, frequentist) | `docs/statistics/overview.mdx` |
    | SRM, peeking, sequential testing | `docs/statistics/sequential.mdx`, `docs/statistics/power.mdx` |
    | Multiple-comparison correction | `docs/statistics/multiple-corrections.mdx` |
-   | Six data-quality checks for analysis | `docs/experimentation-analysis/experiment-results.mdx` |
-   | Decision framework (ship/roll back/review) | `docs/experimentation-analysis/decision-framework.mdx` |
-   | Goal vs. secondary vs. guardrail metrics | `docs/metrics/`, `docs/experimentation-analysis/` |
-   | Sticky bucketing (commercial) | `docs/sticky-bucketing.mdx` |
+   | Six data-quality checks for analysis | `docs/app/experiment-results.mdx` |
+   | Decision framework (ship/roll back/review) | `docs/app/experiment-decisions.mdx` |
+   | Goal vs. secondary vs. guardrail metrics | `docs/app/metrics.mdx`, `docs/app/metrics/` |
+   | Sticky bucketing (commercial) | `docs/app/sticky-bucketing.mdx` |
    | Bandits | `docs/bandits/` |
    | Common pitfalls (SRM causes, bots, etc.) | `docs/kb/experiments/troubleshooting-experiments.mdx`, `docs/faq.mdx` |
-   | API conventions, auth, rate limit | `docs/api-overview.mdx` |
+   | API conventions, auth, rate limit | `docs/api/introduction.mdx` |
 
 3. **OpenAPI spec generated from the validators** — regenerated via `pnpm --filter back-end generate-openapi` in the GrowthBook repo. Useful as a flat view of every endpoint + body schema.
+
+### Automated sync
+
+GrowthBook checks these skills against its OpenAPI spec on every API PR (`scripts/check-agent-skills-drift.mjs` in the monorepo). When a merge changes an endpoint a skill uses, it triggers `.github/workflows/sync-from-growthbook.yml` here, which has Claude update the skills and open a draft `sync/growthbook` PR. The same workflow runs weekly to catch behavior changes the spec can't show. Review those PRs like any other; the rules in this file still apply.
 
 ### How to verify before editing a skill
 
