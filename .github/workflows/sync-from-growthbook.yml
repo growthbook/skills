@@ -10,6 +10,10 @@ on:
       since:
         description: GrowthBook commit to review from (default is 7 days ago)
         required: false
+      dry_run:
+        description: Show the PR in the job summary instead of pushing
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -184,6 +188,8 @@ jobs:
           BRANCH: ${{ steps.target.outputs.branch }}
           BEFORE: ${{ steps.scope.outputs.before }}
           AFTER: ${{ steps.scope.outputs.after }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+          TITLE: Sync skills with GrowthBook API changes
         run: |
           node "$SYNC_DIR/tools/sync.mjs" section
           git config user.name "github-actions[bot]"
@@ -193,31 +199,64 @@ jobs:
 
           case "$KIND" in
             new)
-              git push -q --force origin "HEAD:refs/heads/$BRANCH"
               {
                 echo "Draft from the GrowthBook sync job. Check each change against its cited source before merging."
                 echo
                 cat "$SYNC_DIR/section.md"
               } > "$SYNC_DIR/body.md"
-              gh pr create --draft --head "$BRANCH" \
-                --title "Sync skills with GrowthBook API changes" --body-file "$SYNC_DIR/body.md"
               ;;
             sync)
-              git push -q origin "HEAD:refs/heads/$BRANCH"
               {
                 gh pr view "$NUMBER" --json body --jq .body
                 echo
                 cat "$SYNC_DIR/section.md"
               } > "$SYNC_DIR/body.md"
-              gh pr edit "$NUMBER" --body-file "$SYNC_DIR/body.md"
               ;;
             related)
-              git push -q origin "HEAD:refs/heads/$BRANCH"
               {
                 echo "The GrowthBook sync job added a commit to this PR because it covers the same change."
                 echo
                 cat "$SYNC_DIR/section.md"
               } > "$SYNC_DIR/body.md"
+              ;;
+          esac
+
+          if [ "$DRY_RUN" = "true" ]; then
+            case "$KIND" in
+              new) action="Open draft PR \"$TITLE\" from \`$BRANCH\`"; heading="PR description" ;;
+              sync) action="Push to \`$BRANCH\` and update the description of #$NUMBER"; heading="PR description after this run" ;;
+              related) action="Push to \`$BRANCH\` and comment on #$NUMBER"; heading="Comment" ;;
+            esac
+            {
+              echo "## Dry run: nothing was pushed"
+              echo
+              echo "- **Would:** $action"
+              echo "- **Commit:** $(head -1 "$SYNC_DIR/commit-message.txt")"
+              echo
+              echo "### $heading"
+              echo
+              cat "$SYNC_DIR/body.md"
+              echo
+              echo "### Diff"
+              echo
+              echo '````diff'
+              git show --format= HEAD
+              echo '````'
+            } | tee "$SYNC_DIR/dry-run.md" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          case "$KIND" in
+            new)
+              git push -q --force origin "HEAD:refs/heads/$BRANCH"
+              gh pr create --draft --head "$BRANCH" --title "$TITLE" --body-file "$SYNC_DIR/body.md"
+              ;;
+            sync)
+              git push -q origin "HEAD:refs/heads/$BRANCH"
+              gh pr edit "$NUMBER" --body-file "$SYNC_DIR/body.md"
+              ;;
+            related)
+              git push -q origin "HEAD:refs/heads/$BRANCH"
               gh pr comment "$NUMBER" --body-file "$SYNC_DIR/body.md"
               ;;
           esac
