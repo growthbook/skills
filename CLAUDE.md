@@ -34,7 +34,7 @@ These live in a local checkout of the GrowthBook monorepo, referred to below as 
 
 ### Automated sync
 
-GrowthBook checks these skills against its OpenAPI spec on every API PR (`scripts/check-agent-skills-drift.mjs` in the monorepo). When a merge changes an endpoint a skill uses, it triggers `.github/workflows/sync-from-growthbook.yml` here, which has Claude update the skills and open a draft `sync/growthbook` PR. The same workflow runs weekly to catch behavior changes the spec can't show. Review those PRs like any other; the rules in this file still apply.
+GrowthBook checks these skills against its OpenAPI spec on every API PR (`scripts/check-agent-skills-drift.mjs` in the monorepo). When a merge changes an endpoint a skill uses, it triggers `.github/workflows/sync-from-growthbook.yml` here, which has Claude update the skills using `.github/sync/prompt.md`. A guard (`.github/sync/sync.mjs guard`) rejects edits that add files or `##` sections, change frontmatter names, add changelog wording, PR links, provider names or emoji, or make the drift report worse. Edits go to an open PR that names the triggering GrowthBook PR (or that the GrowthBook PR links), otherwise to the single draft `sync/growthbook` PR. Each run's section links the GrowthBook PRs it covers. The same workflow runs weekly to catch behavior changes the spec can't show. Review those PRs like any other; the rules in this file still apply.
 
 ### How to verify before editing a skill
 

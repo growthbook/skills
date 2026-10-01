@@ -22,6 +22,9 @@ concurrency:
 env:
   SYNC_BRANCH: sync/growthbook
   SYNC_DIR: ${{ github.workspace }}/.sync
+  SKILLS_DIR: ${{ github.workspace }}/skills
+  GROWTHBOOK_DIR: ${{ github.workspace }}/growthbook
+  GH_TOKEN: ${{ github.token }}
 
 jobs:
   sync:
@@ -45,8 +48,14 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
+          package-manager-cache: false
 
-      - run: mkdir -p "$SYNC_DIR"
+      # Run the helpers from main even after switching to an older branch.
+      - name: Test sync helpers
+        run: |
+          mkdir -p "$SYNC_DIR"
+          cp -r skills/.github/sync "$SYNC_DIR/tools"
+          node --test "$SYNC_DIR/tools/sync.test.mjs"
 
       - name: Resolve the commit range
         id: scope
@@ -54,50 +63,64 @@ jobs:
         env:
           DISPATCH_BEFORE: ${{ github.event.client_payload.before }}
           DISPATCH_AFTER: ${{ github.event.client_payload.after }}
-          DISPATCH_PR: ${{ github.event.client_payload.pr }}
           SINCE: ${{ inputs.since }}
         run: |
           after=${DISPATCH_AFTER:-$(git rev-parse HEAD)}
           before=${DISPATCH_BEFORE:-${SINCE:-$(git rev-list -1 --before="7 days ago" HEAD)}}
-          pr=${DISPATCH_PR:-}
           for sha in "$before" "$after"; do
             [[ "$sha" =~ ^[0-9a-f]{7,40}$ ]] || { echo "::error::Invalid commit: $sha"; exit 1; }
           done
-          [[ -z "$pr" || "$pr" =~ ^[0-9]+$ ]] || { echo "::error::Invalid PR number: $pr"; exit 1; }
           git checkout -q "$after"
-          commits=$(git log --format=%h "$before..$after" -- \
+          git log --format=%H "$before..$after" -- \
             packages/back-end/src/api packages/shared/src/validators \
             packages/back-end/generated/spec.yaml docs/statistics \
             docs/experimentation-analysis docs/features docs/api/introduction.mdx \
             docs/app/experiment-results.mdx docs/app/experiment-decisions.mdx \
-            docs/app/sticky-bucketing.mdx docs/app/metrics.mdx | wc -l)
+            docs/app/sticky-bucketing.mdx docs/app/metrics.mdx > "$SYNC_DIR/commits.txt"
+          git show "$before:packages/back-end/generated/spec.yaml" > "$SYNC_DIR/base-spec.yaml"
           {
             echo "before=$before"
             echo "after=$after"
-            echo "pr=$pr"
-            echo "commits=$commits"
+            echo "commits=$(wc -l < "$SYNC_DIR/commits.txt" | tr -d ' ')"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Carry over an open sync PR
-        id: carry
+      # The sync PR links each of these, which also adds a backlink on the
+      # GrowthBook PR. A growthbook/skills link in a PR description marks the
+      # skills PR that this run should add to.
+      - name: Find the GrowthBook PRs
+        run: |
+          while read -r sha; do
+            gh api "repos/growthbook/growthbook/commits/$sha/pulls" \
+              --jq '.[] | select(.merged_at != null) | [.number, .title, ([(.body // "") | scan("growthbook/skills(?:#|/pull/)([0-9]+)") | .[0]] | unique | join(","))] | @tsv'
+          done < "$SYNC_DIR/commits.txt" | sort -u -t$'\t' -k1,1n > "$SYNC_DIR/growthbook-prs.tsv"
+          cat "$SYNC_DIR/growthbook-prs.tsv"
+
+      - name: Pick the PR to add to
+        id: target
+        run: |
+          node growthbook/scripts/check-agent-skills-drift.mjs --skills skills \
+            --spec growthbook/packages/back-end/generated/spec.yaml \
+            --base-spec "$SYNC_DIR/base-spec.yaml" > "$SYNC_DIR/drift.md"
+          gh pr list -R "$GITHUB_REPOSITORY" --state open --limit 100 \
+            --json number,headRefName,isCrossRepository,body,files > "$SYNC_DIR/open-prs.json"
+          node "$SYNC_DIR/tools/sync.mjs" pick-target >> "$GITHUB_OUTPUT"
+          cat "$SYNC_DIR/target.json"
+
+      - name: Check out the target branch
+        id: base
         working-directory: skills
         env:
-          GH_TOKEN: ${{ github.token }}
+          KIND: ${{ steps.target.outputs.kind }}
+          BRANCH: ${{ steps.target.outputs.branch }}
         run: |
-          if git ls-remote --exit-code --heads origin "$SYNC_BRANCH" > /dev/null; then
-            if git diff "origin/main...origin/$SYNC_BRANCH" | git apply --index; then
-              gh pr view "$SYNC_BRANCH" --json body --jq .body > "$SYNC_DIR/existing-pr-body.md" || true
-            else
-              echo "::warning::The open sync PR conflicts with main; its edits will be redone."
-            fi
+          if [ "$KIND" != "new" ]; then
+            git checkout -q -B "$BRANCH" "origin/$BRANCH"
           fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Drift report
         id: drift
-        env:
-          BEFORE: ${{ steps.scope.outputs.before }}
         run: |
-          git -C growthbook show "$BEFORE:packages/back-end/generated/spec.yaml" > "$SYNC_DIR/base-spec.yaml"
           node growthbook/scripts/check-agent-skills-drift.mjs --skills skills \
             --spec growthbook/packages/back-end/generated/spec.yaml \
             --base-spec "$SYNC_DIR/base-spec.yaml" > "$SYNC_DIR/drift.md"
@@ -106,47 +129,95 @@ jobs:
             echo "clean=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Update skills with Claude
+      - name: Render the prompt
+        id: prompt
         if: steps.scope.outputs.commits != '0' || steps.drift.outputs.clean != 'true'
+        env:
+          BEFORE: ${{ steps.scope.outputs.before }}
+          AFTER: ${{ steps.scope.outputs.after }}
+        run: |
+          {
+            echo "text<<PROMPT_EOF"
+            node "$SYNC_DIR/tools/sync.mjs" prompt
+            echo "PROMPT_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Update skills with Claude
+        if: steps.prompt.outcome == 'success'
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ github.token }}
           # Dispatches may come from a GitHub App token, whose actor is a bot.
           allowed_bots: "*"
-          prompt: |
-            Keep the GrowthBook agent skills in sync with the GrowthBook API.
-
-            - Skills checkout: `skills/`. Read `skills/CLAUDE.md` before editing.
-            - GrowthBook monorepo: `growthbook/`, checked out at ${{ steps.scope.outputs.after }}.
-            - Follow `growthbook/.claude/skills/sync-agent-skills/SKILL.md` from step 4 on.
-              Steps 1-3 are done: the drift report is at `.sync/drift.md`.
-            - Review GrowthBook commits `${{ steps.scope.outputs.before }}..${{ steps.scope.outputs.after }}`
-              that touch the API handlers, shared validators, spec, or the docs the skills cite.
-              Use `git -C growthbook log` and `git -C growthbook show` to read them.
-            - Edit only files under `skills/`. Do not commit, push, or open a PR; a later step does that.
-
-            Then write the PR description to `.sync/pr-body.md`:
-            - One bullet per skill change: the file, what changed, and the GrowthBook file
-              (handler or validator) that confirms it.
-            - Under "Not changed", findings you checked and left alone, with the reason.
-            - ${{ steps.scope.outputs.pr && format('Link https://github.com/growthbook/growthbook/pull/{0} as the trigger.', steps.scope.outputs.pr) || 'Name the commit range you reviewed.' }}
-            - If `.sync/existing-pr-body.md` exists, keep its bullets and add yours below.
-
-            If nothing needs to change, edit nothing and do not write the PR description.
+          prompt: ${{ steps.prompt.outputs.text }}
           claude_args: >-
+            --model claude-opus-5-5
             --max-turns 80
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git -C growthbook log:*),Bash(git -C growthbook show:*),Bash(git -C growthbook diff:*),Bash(node growthbook/scripts/check-agent-skills-drift.mjs:*)"
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git -C growthbook log:*),Bash(git -C growthbook show:*),Bash(git -C growthbook diff:*),Bash(git -C skills diff:*),Bash(git -C skills checkout -- :*),Bash(node growthbook/scripts/check-agent-skills-drift.mjs:*)"
 
-      - name: Open or update the sync PR
-        if: hashFiles('.sync/pr-body.md') != ''
-        uses: peter-evans/create-pull-request@v8
-        with:
-          path: skills
-          branch: ${{ env.SYNC_BRANCH }}
-          draft: true
-          title: Sync skills with GrowthBook API changes
-          commit-message: Sync skills with GrowthBook API changes
-          body-path: ${{ env.SYNC_DIR }}/pr-body.md
-          add-paths: skills/**
-          delete-branch: true
+      - name: Guard the edits
+        id: guard
+        if: steps.prompt.outcome == 'success'
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+        run: |
+          set +e
+          node "$SYNC_DIR/tools/sync.mjs" guard
+          status=$?
+          set -e
+          cat "$SYNC_DIR/guard.md" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$SYNC_DIR/notes.md" ]; then
+            { echo; cat "$SYNC_DIR/notes.md"; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -n "$(git -C skills status --porcelain)" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+          exit $status
+
+      - name: Publish
+        if: steps.guard.outputs.changed == 'true'
+        working-directory: skills
+        env:
+          KIND: ${{ steps.target.outputs.kind }}
+          NUMBER: ${{ steps.target.outputs.number }}
+          BRANCH: ${{ steps.target.outputs.branch }}
+          BEFORE: ${{ steps.scope.outputs.before }}
+          AFTER: ${{ steps.scope.outputs.after }}
+        run: |
+          node "$SYNC_DIR/tools/sync.mjs" section
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add skills
+          git commit -q -F "$SYNC_DIR/commit-message.txt"
+
+          case "$KIND" in
+            new)
+              git push -q --force origin "HEAD:refs/heads/$BRANCH"
+              {
+                echo "Draft from the GrowthBook sync job. Check each change against its cited source before merging."
+                echo
+                cat "$SYNC_DIR/section.md"
+              } > "$SYNC_DIR/body.md"
+              gh pr create --draft --head "$BRANCH" \
+                --title "Sync skills with GrowthBook API changes" --body-file "$SYNC_DIR/body.md"
+              ;;
+            sync)
+              git push -q origin "HEAD:refs/heads/$BRANCH"
+              {
+                gh pr view "$NUMBER" --json body --jq .body
+                echo
+                cat "$SYNC_DIR/section.md"
+              } > "$SYNC_DIR/body.md"
+              gh pr edit "$NUMBER" --body-file "$SYNC_DIR/body.md"
+              ;;
+            related)
+              git push -q origin "HEAD:refs/heads/$BRANCH"
+              {
+                echo "The GrowthBook sync job added a commit to this PR because it covers the same change."
+                echo
+                cat "$SYNC_DIR/section.md"
+              } > "$SYNC_DIR/body.md"
+              gh pr comment "$NUMBER" --body-file "$SYNC_DIR/body.md"
+              ;;
+          esac
