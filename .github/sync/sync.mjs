@@ -2,17 +2,33 @@
 /**
  * Helpers for .github/workflows/sync-from-growthbook.yml.
  *
- *   pick-target  Choose the open PR this run adds to, or a new sync branch.
+ *   range        Resolve the GrowthBook commits to review since the last sync.
+ *   prs          Turn commit-to-PR lookups into the PR list and a commit map.
+ *   pick-target  Choose the PR this run adds to.
+ *   should-run   Decide whether there is anything new to review.
+ *   changes      Write each reviewed commit's diff for the model to read.
  *   prompt       Render prompt.md with this run's inputs.
  *   guard        Reject skill edits that break the authoring rules.
- *   section      Write the PR description section for this run.
+ *   section      Write the PR description section and commit message.
+ *   body         Build the PR description or comment for the target.
+ *   state        Print the sync state to record after a successful run.
  *
- * Reads SYNC_DIR, SKILLS_DIR, GROWTHBOOK_DIR, BEFORE, AFTER and SYNC_BRANCH
- * from the environment.
+ * The workflow copies this directory, the GrowthBook drift checker, and the
+ * spec to a trusted directory before the model runs, and runs every command
+ * from there.
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -20,31 +36,39 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MAX_CHANGED_LINES = 200;
 const MAX_FILES = 8;
 const DESCRIPTION_LIMIT = 1024;
+const BODY_LIMIT = 60000;
+const DIFF_LIMIT = 150000;
+export const STATE_TAG = "sync-state";
 
-// Each pattern is checked against added lines only. Every one of them has
-// zero matches in the human-written skills, so a hit means the edit reads
-// differently from the rest of the repo.
-// Routers may name a client in their install preamble; workflow files may not.
-export const REFERENCE_ONLY_PATTERNS = [
-  [
-    /\b(Claude|Anthropic|OpenAI|ChatGPT|Cursor|LLM|as an AI)\b/,
-    "provider names stay out of workflow files (CLAUDE.md: client-neutral core)",
-  ],
-];
-
+// Each pattern is checked against added lines only. None of them matches the
+// human-written skills, so a hit means the edit reads differently from the
+// rest of the repo.
 export const JUNK_PATTERNS = [
   [
-    /growthbook\/growthbook|\/pull\/\d+|(^|[\s(])#\d{2,}\b/,
+    /growthbook\/(growthbook|skills)|\/pull\/\d+|\bskills#\d+|(^|[\s(])#\d{2,}\b/,
     "links to PRs or issues belong in the PR description, not the skill",
   ],
   [
     /\b(as of (v?\d|today|now|this)|(has|have) been (changed|updated|renamed|added|removed)|(was|were) (changed|renamed) (to|in)|newly added|recent (change|update)s?)\b/i,
     "changelog wording; describe current behavior only",
   ],
+  [
+    /(^|[.(]\s*|^\s*[-*]\s+)(Previously|Formerly)\b|\(previously\b|\bno longer (supported|available|accepted|returned|required|works?)\b/i,
+    "changelog wording; describe current behavior only",
+  ],
   [/\b(TODO|FIXME|XXX|TBD)\b/, "unfinished-work markers"],
   [/<!--/, "HTML comments"],
-  [/[\u{1F300}-\u{1FAFF}\u{2700}-\u{27BF}\u{2B50}\u{2705}]/u, "emoji"],
+  [/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B50}\u{2705}\u{FE0F}]/u, "emoji"],
   [/\s+$/, "trailing whitespace"],
+];
+
+// Routers name the Claude Code plugin in their install preamble, which
+// skills CLAUDE.md allows; workflow files stay client-neutral.
+export const REFERENCE_ONLY_PATTERNS = [
+  [
+    /\b(Claude|Anthropic|OpenAI|ChatGPT|Cursor|LLM|as an AI)\b/,
+    "provider names stay out of workflow files (CLAUDE.md: client-neutral core)",
+  ],
 ];
 
 function env(name) {
@@ -53,16 +77,47 @@ function env(name) {
   return value;
 }
 
+// Ignore repo hooks and fsmonitor so nothing in a checkout can run code.
 function git(cwd, ...args) {
-  return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
+  return execFileSync(
+    "git",
+    [
+      "-c",
+      "core.fsmonitor=false",
+      "-c",
+      "core.hooksPath=/dev/null",
+      "-C",
+      cwd,
+      ...args,
+    ],
+    {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      env: {
+        ...process.env,
+        GIT_CONFIG_GLOBAL: "/dev/null",
+        GIT_CONFIG_NOSYSTEM: "1",
+      },
+    },
+  );
 }
 
 function readIfExists(file) {
   return existsSync(file) ? readFileSync(file, "utf8") : "";
 }
 
-function growthbookPrs(syncDir) {
-  return readIfExists(path.join(syncDir, "growthbook-prs.tsv"))
+function readJson(file, fallback) {
+  const text = readIfExists(file);
+  return text ? JSON.parse(text) : fallback;
+}
+
+function output(values) {
+  const lines = Object.entries(values).map(([k, v]) => `${k}=${v ?? ""}`);
+  process.stdout.write(lines.join("\n") + "\n");
+}
+
+export function parseGrowthbookPrs(tsv) {
+  return tsv
     .split("\n")
     .filter(Boolean)
     .map((line) => {
@@ -75,50 +130,175 @@ function growthbookPrs(syncDir) {
     });
 }
 
-export function affectedSkillFiles(driftReport) {
-  return [
-    ...new Set(
-      [...driftReport.matchAll(/`(skills\/[^`:]+\.md)(?::\d+)?`/g)].map(
-        (m) => m[1],
-      ),
-    ),
-  ].sort();
+// Input lines are "sha<TAB>number<TAB>title<TAB>linked skills PRs".
+export function collectPrs(tsv) {
+  const byNumber = new Map();
+  const bySha = {};
+  for (const line of tsv.split("\n").filter(Boolean)) {
+    const [sha, number, title, linked = ""] = line.split("\t");
+    bySha[sha] = Number(number);
+    byNumber.set(Number(number), { title, linked });
+  }
+  const list = [...byNumber]
+    .sort(([a], [b]) => a - b)
+    .map(([number, { title, linked }]) => `${number}\t${title}\t${linked}`);
+  return { tsv: list.join("\n") + (list.length ? "\n" : ""), bySha };
 }
 
-// A PR is related only through an explicit link: it names one of this run's
-// GrowthBook PRs, or one of those PRs links it. Sharing files is not enough;
-// those PRs are listed for the reviewer instead.
-export function pickTarget({ openPrs, growthbookPrs, affected, syncBranch }) {
-  const linked = new Set(growthbookPrs.flatMap((pr) => pr.linkedSkillsPrs));
-  const mentions = (body) =>
-    growthbookPrs.some((pr) =>
-      new RegExp(`growthbook/growthbook(#|/pull/)${pr.number}\\b`).test(
-        body ?? "",
-      ),
+export function watchPaths(text) {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"));
+}
+
+export function parseState(text) {
+  try {
+    const state = JSON.parse(text);
+    if (typeof state.growthbook === "string") {
+      return { growthbook: state.growthbook, reviewed: state.reviewed ?? [] };
+    }
+  } catch {
+    // An unreadable state means a full catch-up from the default window.
+  }
+  return null;
+}
+
+export const findingKey = ({ file, method, path: refPath }) =>
+  `${file}|${method}|${refPath}`;
+
+export function findingKeys(report) {
+  return [...report.missing, ...report.deprecated].map(findingKey).sort();
+}
+
+// Every finding is already known and no watched commit is new, so a model
+// run would only repeat the last one.
+export function shouldRun({ commits, report, reviewed }) {
+  if (commits > 0) return true;
+  const known = new Set(reviewed);
+  return findingKeys(report).some((key) => !known.has(key));
+}
+
+function range() {
+  const skillsDir = env("SKILLS_DIR");
+  const growthbookDir = env("GROWTHBOOK_DIR");
+  const trusted = env("TRUSTED");
+  const syncDir = env("SYNC_DIR");
+  const after = git(growthbookDir, "rev-parse", "HEAD").trim();
+  let stateText = "";
+  try {
+    stateText = git(
+      skillsDir,
+      "for-each-ref",
+      `refs/tags/${STATE_TAG}`,
+      "--format=%(contents)",
     );
+  } catch {
+    stateText = "";
+  }
+  const state = parseState(stateText.trim());
+  const isAncestor = (sha) => {
+    try {
+      git(growthbookDir, "merge-base", "--is-ancestor", sha, after);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  let before = process.env.SINCE || null;
+  if (!before && state && isAncestor(state.growthbook))
+    before = state.growthbook;
+  if (!before) {
+    before = git(
+      growthbookDir,
+      "rev-list",
+      "-1",
+      "--before=7 days ago",
+      after,
+    ).trim();
+  }
+  if (!/^[0-9a-f]{7,40}$/.test(before) || !isAncestor(before)) {
+    throw new Error(
+      `Cannot review from ${before}: not an ancestor of ${after}`,
+    );
+  }
+  const paths = watchPaths(
+    readFileSync(path.join(trusted, "watch-paths.txt"), "utf8"),
+  );
+  const commits = git(
+    growthbookDir,
+    "log",
+    "--format=%H",
+    `${before}..${after}`,
+    "--",
+    ...paths,
+  )
+    .split("\n")
+    .filter(Boolean);
+  writeFileSync(
+    path.join(syncDir, "commits.txt"),
+    commits.join("\n") + (commits.length ? "\n" : ""),
+  );
+  writeFileSync(
+    path.join(trusted, "base-spec.yaml"),
+    git(
+      growthbookDir,
+      "show",
+      `${before}:packages/back-end/generated/spec.yaml`,
+    ),
+  );
+  writeFileSync(
+    path.join(trusted, "reviewed.json"),
+    JSON.stringify(state?.reviewed ?? []),
+  );
+  output({ before, after, commits: commits.length });
+}
+
+// A skills PR is paired with a GrowthBook PR when it names that PR, or the
+// GrowthBook PR links it. Edits go to a paired PR only when the run covers
+// that one GrowthBook PR alone; otherwise they would carry unrelated fixes.
+export function pickTarget({ openPrs, growthbookPrs, affected, syncBranch }) {
   const sameRepo = openPrs.filter((pr) => !pr.isCrossRepository);
   const filesOf = (pr) => (pr.files ?? []).map((f) => f.path);
-  const related = sameRepo.find(
-    (pr) =>
-      pr.headRefName !== syncBranch &&
-      (linked.has(pr.number) || mentions(pr.body)),
-  );
-  const syncPr = sameRepo.find((pr) => pr.headRefName === syncBranch);
-  const target = related
-    ? {
-        kind: "related",
-        number: related.number,
-        branch: related.headRefName,
-        files: filesOf(related),
+  const paired = [];
+  for (const gb of growthbookPrs) {
+    const mention = new RegExp(
+      `growthbook/growthbook(#|/pull/)${gb.number}\\b`,
+    );
+    for (const pr of sameRepo) {
+      if (pr.headRefName === syncBranch) continue;
+      if (
+        gb.linkedSkillsPrs.includes(pr.number) ||
+        mention.test(pr.body ?? "")
+      ) {
+        paired.push({
+          growthbook: gb.number,
+          skills: pr.number,
+          branch: pr.headRefName,
+        });
       }
-    : syncPr
-      ? {
-          kind: "sync",
-          number: syncPr.number,
-          branch: syncBranch,
-          files: filesOf(syncPr),
-        }
-      : { kind: "new", number: null, branch: syncBranch, files: [] };
+    }
+  }
+  const syncPr = sameRepo.find((pr) => pr.headRefName === syncBranch);
+  let target;
+  if (growthbookPrs.length === 1 && paired.length === 1) {
+    const pr = sameRepo.find((p) => p.number === paired[0].skills);
+    target = {
+      kind: "related",
+      number: pr.number,
+      branch: pr.headRefName,
+      files: filesOf(pr),
+    };
+  } else if (syncPr) {
+    target = {
+      kind: "sync",
+      number: syncPr.number,
+      branch: syncBranch,
+      files: filesOf(syncPr),
+    };
+  } else {
+    target = { kind: "new", number: null, branch: syncBranch, files: [] };
+  }
   const overlaps = sameRepo
     .filter((pr) => pr.number !== target.number)
     .map((pr) => ({
@@ -126,7 +306,61 @@ export function pickTarget({ openPrs, growthbookPrs, affected, syncBranch }) {
       files: filesOf(pr).filter((f) => affected.includes(f)),
     }))
     .filter((pr) => pr.files.length > 0);
-  return { ...target, overlaps };
+  return {
+    ...target,
+    paired: target.kind === "related" ? [] : paired,
+    overlaps,
+  };
+}
+
+export function affectedSkillFiles(report) {
+  return [
+    ...new Set([
+      ...report.impacted.flatMap((i) => i.files),
+      ...report.missing.map((f) => f.file),
+      ...report.deprecated.map((f) => f.file),
+    ]),
+  ].sort();
+}
+
+function changes() {
+  const growthbookDir = env("GROWTHBOOK_DIR");
+  const syncDir = env("SYNC_DIR");
+  const trusted = env("TRUSTED");
+  const dir = path.join(syncDir, "changes");
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  const prsBySha = readJson(path.join(syncDir, "commit-prs.json"), {});
+  // The generated spec is summarized by drift.md; its diff would drown the rest.
+  const paths = watchPaths(
+    readFileSync(path.join(trusted, "watch-paths.txt"), "utf8"),
+  ).filter((p) => !p.endsWith("generated/spec.yaml"));
+  const commits = readIfExists(path.join(syncDir, "commits.txt"))
+    .split("\n")
+    .filter(Boolean);
+  const index = ["# GrowthBook commits to review", ""];
+  commits.forEach((sha, i) => {
+    const file = `${String(i + 1).padStart(3, "0")}-${sha.slice(0, 10)}.diff`;
+    let diff = git(
+      growthbookDir,
+      "show",
+      "--stat",
+      "--patch",
+      "--format=commit %H%nDate: %as%n%n%B",
+      sha,
+      "--",
+      ...paths,
+    );
+    if (diff.length > DIFF_LIMIT) {
+      diff = `${diff.slice(0, DIFF_LIMIT)}\n\n[Truncated at ${DIFF_LIMIT} characters. The rest of this commit is not shown.]\n`;
+    }
+    writeFileSync(path.join(dir, file), diff);
+    const subject = git(growthbookDir, "log", "-1", "--format=%s", sha).trim();
+    const pr = prsBySha[sha] ? ` (growthbook/growthbook#${prsBySha[sha]})` : "";
+    index.push(`- \`changes/${file}\`: ${subject}${pr}`);
+  });
+  if (commits.length === 0) index.push("No watched commits in this range.");
+  writeFileSync(path.join(dir, "index.md"), index.join("\n") + "\n");
 }
 
 export function renderPrompt(template, values) {
@@ -136,28 +370,69 @@ export function renderPrompt(template, values) {
   });
 }
 
-function frontmatter(text) {
+export function targetDescription(target) {
+  if (target.kind === "new") {
+    return "No open PR covers this yet. Your edits start a new draft PR from `main`.";
+  }
+  const files = target.files.map((f) => `\`${f}\``).join(", ") || "nothing yet";
+  return `Your edits are added to open PR #${target.number} (branch \`${target.branch}\`), which is checked out. It already changes: ${files}. Build on its changes; don't redo or undo them.`;
+}
+
+export function pairedDescription(paired) {
+  if (!paired.length) return "None.";
+  return paired
+    .map(
+      (p) =>
+        `- growthbook/growthbook#${p.growthbook} is paired with skills PR #${p.skills}. Leave skill changes caused by that GrowthBook PR to #${p.skills}; list them under "Checked, no change" as covered by #${p.skills}.`,
+    )
+    .join("\n");
+}
+
+// Frontmatter as an ordered list of [key, raw value including continuation
+// lines], so any change outside `description` is visible.
+export function frontmatterEntries(text) {
   const match = /^---\n([\s\S]*?)\n---\n/.exec(text);
   if (!match) return null;
-  const field = (name) =>
-    new RegExp(`^${name}:\\s*(.*)$`, "m").exec(match[1])?.[1]?.trim() ?? null;
-  return { name: field("name"), description: field("description") };
+  const entries = [];
+  for (const line of match[1].split("\n")) {
+    const key = /^([A-Za-z0-9_-]+):(.*)$/.exec(line);
+    if (key) entries.push([key[1], key[2].trim()]);
+    else if (entries.length) entries[entries.length - 1][1] += `\n${line}`;
+    else entries.push(["", line]);
+  }
+  return entries;
+}
+
+function scalarText(raw) {
+  const [first, ...rest] = raw.split("\n");
+  if (/^[>|][+-]?$/.test(first.trim())) {
+    return rest
+      .map((l) => l.trim())
+      .join(" ")
+      .trim();
+  }
+  return raw.replace(/^["']|["']$/g, "").trim();
 }
 
 const sectionHeadings = (text) =>
-  text.split("\n").filter((line) => /^## /.test(line));
+  text
+    .split("\n")
+    .filter((line) => /^## /.test(line) && line !== "## Contents");
 
 export function checkFile({ file, before, after, addedLines, skillsDir }) {
   const problems = [];
-  const fmBefore = frontmatter(before);
-  const fmAfter = frontmatter(after);
+  const fmBefore = frontmatterEntries(before);
+  const fmAfter = frontmatterEntries(after);
   if (!fmAfter) {
     problems.push(`${file}: frontmatter is missing or malformed`);
   } else {
-    if (fmBefore && fmAfter.name !== fmBefore.name) {
-      problems.push(`${file}: frontmatter name changed`);
+    const rest = (entries) =>
+      JSON.stringify((entries ?? []).filter(([key]) => key !== "description"));
+    if (fmBefore && rest(fmBefore) !== rest(fmAfter)) {
+      problems.push(`${file}: frontmatter other than \`description\` changed`);
     }
-    if ((fmAfter.description ?? "").length > DESCRIPTION_LIMIT) {
+    const description = fmAfter.find(([key]) => key === "description");
+    if (description && scalarText(description[1]).length > DESCRIPTION_LIMIT) {
       problems.push(
         `${file}: description is over ${DESCRIPTION_LIMIT} characters`,
       );
@@ -170,13 +445,12 @@ export function checkFile({ file, before, after, addedLines, skillsDir }) {
       `${file}: \`##\` sections changed; extend existing sections instead`,
     );
   }
+  const patterns = file.includes("/references/")
+    ? [...JUNK_PATTERNS, ...REFERENCE_ONLY_PATTERNS]
+    : JUNK_PATTERNS;
   for (const line of addedLines) {
-    const text = line.replaceAll("CLAUDE_PLUGIN_ROOT", "");
-    const patterns = file.includes("/references/")
-      ? [...JUNK_PATTERNS, ...REFERENCE_ONLY_PATTERNS]
-      : JUNK_PATTERNS;
     for (const [pattern, reason] of patterns) {
-      if (pattern.test(text)) {
+      if (pattern.test(line)) {
         problems.push(`${file}: ${reason}: \`${line.trim().slice(0, 120)}\``);
       }
     }
@@ -193,66 +467,92 @@ export function checkFile({ file, before, after, addedLines, skillsDir }) {
   return problems;
 }
 
-function driftCounts(report) {
-  const count = (heading) => {
-    const start = report.indexOf(heading);
-    if (start === -1) return 0;
-    const rest = report.slice(start + heading.length);
-    const end = rest.search(/\n### /);
-    return (end === -1 ? rest : rest.slice(0, end))
-      .split("\n")
-      .filter((line) => line.startsWith("- ")).length;
-  };
-  return {
-    missing: count("### References to endpoints that do not exist"),
-    deprecated: count("### References to deprecated endpoints"),
-  };
-}
-
-function runDriftCheck(growthbookDir, skillsDir) {
+// Runs the trusted checker on the edited skills with the BASE_SHA skills as
+// the baseline. Any failure to produce a report rejects the edits.
+function newBrokenReferences({ skillsDir, baseSha, checker, spec }) {
+  const baseline = mkdtempSync(path.join(tmpdir(), "skills-baseline-"));
   try {
-    return execFileSync(
-      "node",
+    const archive = execFileSync(
+      "git",
       [
-        path.join(growthbookDir, "scripts/check-agent-skills-drift.mjs"),
-        "--skills",
+        "-c",
+        "core.fsmonitor=false",
+        "-C",
         skillsDir,
-        "--spec",
-        path.join(growthbookDir, "packages/back-end/generated/spec.yaml"),
+        "archive",
+        baseSha,
+        "skills",
       ],
-      { encoding: "utf8" },
+      { maxBuffer: 64 * 1024 * 1024 },
     );
+    execFileSync("tar", ["-x", "-C", baseline], { input: archive });
+    let stdout;
+    try {
+      stdout = execFileSync(
+        "node",
+        [
+          checker,
+          "--skills",
+          skillsDir,
+          "--baseline-skills",
+          baseline,
+          "--spec",
+          spec,
+          "--json",
+        ],
+        { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+      );
+    } catch (error) {
+      return {
+        error: `drift checker failed: ${String(error.stderr || error.message)
+          .trim()
+          .slice(0, 300)}`,
+      };
+    }
+    const report = JSON.parse(stdout);
+    if (!Array.isArray(report.introduced)) {
+      return { error: "drift checker output has no `introduced` list" };
+    }
+    return { introduced: report.introduced };
   } catch (error) {
-    return error.stdout ?? "";
+    return {
+      error: `could not compare with ${baseSha}: ${error.message.slice(0, 300)}`,
+    };
+  } finally {
+    rmSync(baseline, { recursive: true, force: true });
   }
 }
 
-function guard() {
-  const syncDir = env("SYNC_DIR");
-  const skillsDir = env("SKILLS_DIR");
-  const baseSha = env("BASE_SHA");
+export function guardEdits({
+  skillsDir,
+  baseSha,
+  checker,
+  spec,
+  notesFile = null,
+}) {
   const problems = [];
-
-  if (git(skillsDir, "rev-parse", "HEAD").trim() !== baseSha) {
+  if (
+    git(skillsDir, "rev-parse", "HEAD").trim() !==
+    git(skillsDir, "rev-parse", `${baseSha}^{commit}`).trim()
+  ) {
     problems.push(
       "Commits were made during the run; edits must stay uncommitted",
     );
   }
-  const status = git(
+  const changed = [];
+  for (const entry of git(
     skillsDir,
     "status",
     "--porcelain",
     "--untracked-files=all",
   )
     .split("\n")
-    .filter(Boolean);
-  const changed = [];
-  for (const entry of status) {
-    const code = entry.slice(0, 2);
+    .filter(Boolean)) {
+    const code = entry.slice(0, 2).trim();
     const file = entry.slice(3);
-    if (code.trim() !== "M" || !/^skills\/.+\.md$/.test(file)) {
+    if (code !== "M" || !/^skills\/.+\.md$/.test(file)) {
       problems.push(
-        `${file}: only edits to existing skills/**/*.md files are allowed (${code.trim()})`,
+        `${file}: only edits to existing skills/**/*.md files are allowed (${code})`,
       );
     } else {
       changed.push(file);
@@ -261,20 +561,25 @@ function guard() {
 
   let changedLines = 0;
   for (const file of changed) {
-    const diff = git(skillsDir, "diff", "--unified=0", baseSha, "--", file);
-    const lines = diff.split("\n");
-    const added = lines
-      .filter((l) => l.startsWith("+") && !l.startsWith("+++"))
-      .map((l) => l.slice(1));
+    const lines = git(
+      skillsDir,
+      "diff",
+      "--unified=0",
+      baseSha,
+      "--",
+      file,
+    ).split("\n");
     changedLines += lines.filter(
-      (l) => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l),
+      (l) => /^[+-]/.test(l) && !/^(\+\+\+|---) /.test(l),
     ).length;
     problems.push(
       ...checkFile({
         file,
         before: git(skillsDir, "show", `${baseSha}:${file}`),
         after: readFileSync(path.join(skillsDir, file), "utf8"),
-        addedLines: added,
+        addedLines: lines
+          .filter((l) => l.startsWith("+") && !l.startsWith("+++ "))
+          .map((l) => l.slice(1)),
         skillsDir,
       }),
     );
@@ -288,29 +593,32 @@ function guard() {
     );
   }
 
-  const before = driftCounts(readIfExists(path.join(syncDir, "drift.md")));
-  const after = driftCounts(runDriftCheck(env("GROWTHBOOK_DIR"), skillsDir));
-  if (after.missing > before.missing) {
+  const broken = newBrokenReferences({ skillsDir, baseSha, checker, spec });
+  if (broken.error) problems.push(broken.error);
+  for (const finding of broken.introduced ?? []) {
     problems.push(
-      `Missing-endpoint references went from ${before.missing} to ${after.missing}`,
+      `${finding.file}:${finding.line}: new reference to a ${finding.detail ? "missing" : "deprecated"} endpoint \`${finding.method} /api${finding.path}\``,
     );
   }
-  if (after.deprecated > before.deprecated) {
-    problems.push(
-      `Deprecated-endpoint references went from ${before.deprecated} to ${after.deprecated}`,
-    );
+  if (notesFile && changed.length > 0 && !readIfExists(notesFile).trim()) {
+    problems.push("Skills changed but the notes file is empty");
   }
-  if (
-    changed.length > 0 &&
-    !readIfExists(path.join(syncDir, "notes.md")).trim()
-  ) {
-    problems.push("Skills changed but .sync/notes.md is empty");
-  }
+  return { problems, changed, changedLines };
+}
 
+function guard() {
+  const { problems, changed, changedLines } = guardEdits({
+    skillsDir: env("SKILLS_DIR"),
+    baseSha: env("BASE_SHA"),
+    checker: env("CHECKER"),
+    spec: env("SPEC"),
+    notesFile: process.env.NOTES_FILE || null,
+  });
   const report = problems.length
     ? ["### Guard rejected the edits", "", ...problems.map((p) => `- ${p}`), ""]
     : [`### Guard passed (${changed.length} files, ${changedLines} lines)`, ""];
-  writeFileSync(path.join(syncDir, "guard.md"), report.join("\n"));
+  if (process.env.REPORT_FILE)
+    writeFileSync(process.env.REPORT_FILE, report.join("\n"));
   process.stdout.write(report.join("\n") + "\n");
   if (problems.length) process.exit(1);
 }
@@ -324,7 +632,15 @@ export function linkGrowthbookPrs(notes, prNumbers) {
   );
 }
 
-export function buildSection({ prs, notes, overlaps, before, after, date }) {
+export function buildSection({
+  prs,
+  notes,
+  overlaps,
+  paired,
+  before,
+  after,
+  date,
+}) {
   const linkedNotes = linkGrowthbookPrs(
     notes.trim(),
     prs.map((pr) => pr.number),
@@ -349,14 +665,22 @@ export function buildSection({ prs, notes, overlaps, before, after, date }) {
         ...rest.map(line),
         "",
         "</details>",
+        "",
       );
     }
   } else {
     lines.push(
       `GrowthBook changes: https://github.com/growthbook/growthbook/compare/${before}...${after}`,
+      "",
     );
   }
-  lines.push("", linkedNotes);
+  lines.push(linkedNotes);
+  if (paired.length) {
+    lines.push(
+      "",
+      `Paired skills PRs: ${paired.map((p) => `growthbook/growthbook#${p.growthbook} → #${p.skills}`).join(", ")}.`,
+    );
+  }
   if (overlaps.length) {
     lines.push(
       "",
@@ -368,7 +692,12 @@ export function buildSection({ prs, notes, overlaps, before, after, date }) {
         .join("; ")}.`,
     );
   }
-  const refs = primary.map((pr) => `growthbook/growthbook#${pr.number}`);
+  // The subject names only PRs behind an actual change, not open questions.
+  const changesOnly =
+    /#### Changes([\s\S]*?)(?=\n#### |$)/.exec(linkedNotes)?.[1] ?? "";
+  const refs = prs
+    .filter((pr) => changesOnly.includes(`growthbook/growthbook#${pr.number}`))
+    .map((pr) => `growthbook/growthbook#${pr.number}`);
   const subject = refs.length
     ? `Sync skills with ${refs.slice(0, 3).join(", ")}${refs.length > 3 ? " and more" : ""}`
     : "Sync skills with GrowthBook API changes";
@@ -377,72 +706,147 @@ export function buildSection({ prs, notes, overlaps, before, after, date }) {
 
 function section() {
   const syncDir = env("SYNC_DIR");
-  const { overlaps = [] } = JSON.parse(
-    readIfExists(path.join(syncDir, "target.json")) || "{}",
-  );
+  const target = readJson(path.join(syncDir, "target.json"), {});
   const { body, subject } = buildSection({
-    prs: growthbookPrs(syncDir),
+    prs: parseGrowthbookPrs(
+      readIfExists(path.join(syncDir, "growthbook-prs.tsv")),
+    ),
     notes: readFileSync(path.join(syncDir, "notes.md"), "utf8"),
-    overlaps,
+    overlaps: target.overlaps ?? [],
+    paired: target.paired ?? [],
     before: env("BEFORE"),
     after: env("AFTER"),
     date: new Date().toISOString().slice(0, 10),
   });
   writeFileSync(path.join(syncDir, "section.md"), body);
-  writeFileSync(path.join(syncDir, "commit-message.txt"), `${subject}\n`);
+  writeFileSync(
+    path.join(syncDir, "commit-message.txt"),
+    `${subject}\n\n${body}`,
+  );
+}
+
+const SYNC_INTRO =
+  "Draft from the GrowthBook sync job. Check each change against its cited source before merging.";
+const TRIM_NOTE =
+  "_Older sync sections were trimmed to fit; their notes are in the commit messages._";
+
+// Keeps the intro and the newest sections under GitHub's description limit.
+export function appendSection(existing, section, limit = BODY_LIMIT) {
+  const base = existing.trim() || SYNC_INTRO;
+  const parts = base.split(/\n(?=### Sync )/);
+  const intro = parts[0].replace(`\n\n${TRIM_NOTE}`, "");
+  const sections = [...parts.slice(1).map((s) => s.trim()), section.trim()];
+  let trimmed = false;
+  const build = () =>
+    [intro + (trimmed ? `\n\n${TRIM_NOTE}` : ""), ...sections].join("\n\n") +
+    "\n";
+  while (build().length > limit && sections.length > 1) {
+    sections.shift();
+    trimmed = true;
+  }
+  return build().slice(0, limit);
+}
+
+function body() {
+  const syncDir = env("SYNC_DIR");
+  const kind = env("KIND");
+  const section = readFileSync(path.join(syncDir, "section.md"), "utf8");
+  let text;
+  if (kind === "new") text = appendSection("", section);
+  else if (kind === "sync")
+    text = appendSection(
+      readIfExists(path.join(syncDir, "current-body.md")),
+      section,
+    );
+  else {
+    text =
+      `The GrowthBook sync job added a commit to this PR because it is paired with the GrowthBook PR below.\n\n${section}`.slice(
+        0,
+        BODY_LIMIT,
+      );
+  }
+  writeFileSync(path.join(syncDir, "body.md"), text);
+}
+
+function state() {
+  const report = JSON.parse(readFileSync(env("REPORT"), "utf8"));
+  process.stdout.write(
+    JSON.stringify({ growthbook: env("AFTER"), reviewed: findingKeys(report) }),
+  );
 }
 
 function main() {
   const [command] = process.argv.slice(2);
+  if (command === "range") return range();
+  if (command === "guard") return guard();
+  if (command === "state") return state();
   const syncDir = env("SYNC_DIR");
   if (command === "pick-target") {
+    const report = readJson(path.join(syncDir, "drift-main.json"), null);
     const target = pickTarget({
-      openPrs: JSON.parse(
-        readFileSync(path.join(syncDir, "open-prs.json"), "utf8"),
+      openPrs: readJson(path.join(syncDir, "open-prs.json"), []),
+      growthbookPrs: parseGrowthbookPrs(
+        readIfExists(path.join(syncDir, "growthbook-prs.tsv")),
       ),
-      growthbookPrs: growthbookPrs(syncDir),
-      affected: affectedSkillFiles(
-        readIfExists(path.join(syncDir, "drift.md")),
-      ),
+      affected: report ? affectedSkillFiles(report) : [],
       syncBranch: env("SYNC_BRANCH"),
     });
     writeFileSync(
       path.join(syncDir, "target.json"),
       JSON.stringify(target, null, 2),
     );
-    process.stdout.write(
-      `kind=${target.kind}\nnumber=${target.number ?? ""}\nbranch=${target.branch}\n`,
+    return output({
+      kind: target.kind,
+      number: target.number,
+      branch: target.branch,
+    });
+  }
+  if (command === "should-run") {
+    const run = shouldRun({
+      commits: Number(env("COMMITS")),
+      report: JSON.parse(
+        readFileSync(path.join(syncDir, "drift.json"), "utf8"),
+      ),
+      reviewed: readJson(path.join(env("TRUSTED"), "reviewed.json"), []),
+    });
+    return output({ run });
+  }
+  if (command === "changes") return changes();
+  if (command === "prs") {
+    const { tsv, bySha } = collectPrs(
+      readIfExists(path.join(syncDir, "commit-prs.tsv")),
     );
-  } else if (command === "prompt") {
-    const target = JSON.parse(
-      readFileSync(path.join(syncDir, "target.json"), "utf8"),
+    writeFileSync(path.join(syncDir, "growthbook-prs.tsv"), tsv);
+    writeFileSync(path.join(syncDir, "commit-prs.json"), JSON.stringify(bySha));
+    return process.stdout.write(tsv);
+  }
+  if (command === "prompt") {
+    const target = readJson(path.join(syncDir, "target.json"), {});
+    const prs = parseGrowthbookPrs(
+      readIfExists(path.join(syncDir, "growthbook-prs.tsv")),
     );
-    const prs = growthbookPrs(syncDir);
-    process.stdout.write(
+    return process.stdout.write(
       renderPrompt(readFileSync(path.join(HERE, "prompt.md"), "utf8"), {
         BEFORE: env("BEFORE"),
         AFTER: env("AFTER"),
         GROWTHBOOK_PRS: prs.length
-          ? prs.map((pr) => `- #${pr.number} ${pr.title}`).join("\n")
-          : "- None found; review the commit range directly.",
-        TARGET:
-          target.kind === "new"
-            ? "No open PR covers this yet. Your edits start a new draft PR from `main`."
-            : `Your edits are added to open PR #${target.number} (branch \`${target.branch}\`), which is checked out. It already changes: ${target.files.map((f) => `\`${f}\``).join(", ") || "nothing yet"}. Build on its changes; don't redo or undo them.`,
+          ? prs
+              .map((pr) => `- growthbook/growthbook#${pr.number} ${pr.title}`)
+              .join("\n")
+          : "- None found; review the commits in `.sync/changes/` directly.",
+        TARGET: targetDescription(target),
+        PAIRED: pairedDescription(target.paired ?? []),
       }),
     );
-  } else if (command === "guard") {
-    guard();
-  } else if (command === "section") {
-    section();
-  } else {
-    throw new Error(`Unknown command: ${command ?? "(none)"}`);
   }
+  if (command === "section") return section();
+  if (command === "body") return body();
+  throw new Error(`Unknown command: ${command ?? "(none)"}`);
 }
 
 if (
   process.argv[1] &&
-  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
+  import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href
 ) {
   main();
 }
