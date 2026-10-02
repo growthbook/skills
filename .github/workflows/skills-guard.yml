@@ -1,0 +1,71 @@
+name: Skills guard
+
+# Checks every PR against the skill authoring rules and the GrowthBook REST
+# API. PRs from the Cursor sync automation (branches starting with `cursor/`,
+# or labeled `skills-sync`) get the strict rules. The guard script comes from
+# the base branch, so a PR cannot loosen the check that judges it.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: skills-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the PR
+        uses: actions/checkout@v5
+        with:
+          path: repo
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout the GrowthBook drift checker and spec
+        uses: actions/checkout@v5
+        with:
+          repository: growthbook/growthbook
+          path: growthbook
+          sparse-checkout: |
+            scripts
+            packages/back-end/generated
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Test the guard in this PR
+        run: node --test repo/.github/guard/guard.test.mjs
+
+      - name: Check the PR
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          STRICT: ${{ startsWith(github.event.pull_request.head.ref, 'cursor/') || contains(github.event.pull_request.labels.*.name, 'skills-sync') }}
+        run: |
+          base=$(git -C repo merge-base "$BASE_SHA" "$HEAD_SHA")
+          mkdir -p "$RUNNER_TEMP/guard"
+          if git -C repo cat-file -e "$base:.github/guard/guard.mjs" 2>/dev/null; then
+            git -C repo show "$base:.github/guard/guard.mjs" > "$RUNNER_TEMP/guard/guard.mjs"
+          else
+            echo "::notice::The base branch has no guard yet; using this PR's copy."
+            cp repo/.github/guard/guard.mjs "$RUNNER_TEMP/guard/guard.mjs"
+          fi
+          strict=()
+          [ "$STRICT" = "true" ] && strict=(--strict)
+          node "$RUNNER_TEMP/guard/guard.mjs" --repo repo --base "$base" --head "$HEAD_SHA" \
+            --checker growthbook/scripts/check-agent-skills-drift.mjs \
+            --spec growthbook/packages/back-end/generated/spec.yaml \
+            --report "$GITHUB_STEP_SUMMARY" "${strict[@]}"
