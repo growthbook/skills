@@ -219,7 +219,9 @@ test("guard checks commits, not the working tree, and fails closed", () => {
     const sneaky = commit("sneaky");
     const strict = run(sneaky).problems;
     assert.ok(
-      strict.some((p) => p.includes("skills/.gitattributes: sync PRs may only add a workflow")),
+      strict.some((p) =>
+        p.includes("skills/.gitattributes: sync PRs may only add a workflow"),
+      ),
     );
     assert.ok(
       strict.some((p) => p.includes("README.md: sync PRs may only edit")),
@@ -331,6 +333,37 @@ test("sync PRs may add one workflow shaped like its siblings and listed in its r
           "skills/billing/references/invoice.md: sync PRs may only add",
         ),
       ),
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(tools, { recursive: true, force: true });
+  }
+});
+
+test("large sync PRs warn; runaway ones are rejected", () => {
+  const { dir, commit } = repo();
+  const tools = mkdtempSync(path.join(tmpdir(), "skills-guard-tools-"));
+  try {
+    const ok = path.join(tools, "ok.mjs");
+    writeFileSync(ok, "console.log(JSON.stringify({ introduced: [] }));");
+    const base = commit("base");
+    const run = (head) =>
+      guard({
+        repo: dir,
+        baseSha: base,
+        headSha: head,
+        checker: ok,
+        spec: "x",
+        strict: true,
+      });
+    const file = path.join(dir, REFERENCE);
+    writeFileSync(file, SKILL + "Step.\n".repeat(300));
+    const large = run(commit("large"));
+    assert.deepEqual(large.problems, []);
+    assert.ok(large.warnings.some((w) => w.includes("consider splitting")));
+    writeFileSync(file, SKILL + "Step.\n".repeat(1200));
+    assert.ok(
+      run(commit("runaway")).problems.some((p) => p.includes("Split it")),
     );
   } finally {
     rmSync(dir, { recursive: true, force: true });

@@ -13,8 +13,9 @@
  *
  * --strict (automated sync PRs) also allows only edits to existing
  * skills/**\/*.md files, no new `##` sections, no frontmatter change other
- * than a router description, no edits to experiment-launch.md, and at most
- * MAX_FILES files and MAX_CHANGED_LINES lines.
+ * than a router description, no edits to experiment-launch.md, at most one
+ * new workflow shaped like its siblings, and a warning (or, past the hard
+ * limits, a rejection) for large changes.
  *
  * Wording that reads like a changelog or chat is reported as a warning.
  * Commits are read with git plumbing (ls-tree, cat-file), so attributes,
@@ -34,9 +35,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-export const MAX_CHANGED_LINES = 200;
-export const MAX_FILES = 8;
-export const MAX_NEW_WORKFLOW_LINES = 250;
+// Sync PRs past the soft limits get a warning suggesting a split; past the
+// hard limits the edit is treated as runaway and rejected.
+export const SOFT_FILES = 8;
+export const SOFT_LINES = 200;
+export const SOFT_NEW_WORKFLOW_LINES = 250;
+export const HARD_FILES = 25;
+export const HARD_LINES = 1000;
 const WORKFLOW_SECTIONS = [
   "## Workflow",
   "## Guardrails",
@@ -352,11 +357,6 @@ export function checkNewWorkflow({ file, text, router }) {
     problems.push(`${file}: frontmatter \`name\` must be \`${name}\``);
   }
   const lines = text.split("\n").length;
-  if (lines > MAX_NEW_WORKFLOW_LINES) {
-    problems.push(
-      `${file}: ${lines} lines; a new workflow in a sync PR may have at most ${MAX_NEW_WORKFLOW_LINES}`,
-    );
-  }
   const headings = text.split("\n").filter((l) => /^## /.test(l));
   let at = -1;
   for (const section of WORKFLOW_SECTIONS) {
@@ -472,15 +472,29 @@ export function guard({ repo, baseSha, headSha, checker, spec, strict }) {
       `${newWorkflows.length} new workflow files; sync PRs may add at most one`,
     );
   }
-  if (strict && editedSkills.length > MAX_FILES) {
-    problems.push(
-      `${editedSkills.length} skill files changed; the limit for sync PRs is ${MAX_FILES}`,
+  if (strict) {
+    const files = editedSkills.length + newWorkflows.length;
+    const newLines = newWorkflows.reduce(
+      (sum, file) => sum + blob(repo, head.get(file).sha).split("\n").length,
+      0,
     );
-  }
-  if (strict && changedLines > MAX_CHANGED_LINES) {
-    problems.push(
-      `${changedLines} skill lines changed; the limit for sync PRs is ${MAX_CHANGED_LINES}`,
-    );
+    if (files > HARD_FILES || changedLines + newLines > HARD_LINES) {
+      problems.push(
+        `${files} skill files and ${changedLines + newLines} lines changed; past ${HARD_FILES} files or ${HARD_LINES} lines a sync PR is rejected. Split it.`,
+      );
+    } else if (files > SOFT_FILES || changedLines > SOFT_LINES) {
+      warnings.push(
+        `Large sync PR (${files} skill files, ${changedLines} lines edited): consider splitting it by topic`,
+      );
+    }
+    for (const file of newWorkflows) {
+      const lines = blob(repo, head.get(file).sha).split("\n").length;
+      if (lines > SOFT_NEW_WORKFLOW_LINES) {
+        warnings.push(
+          `${file}: new workflow is ${lines} lines; consider a smaller first version`,
+        );
+      }
+    }
   }
   if (editedSkills.length + newWorkflows.length > 0) {
     const broken = newBrokenReferences({ repo, base, head, checker, spec });
