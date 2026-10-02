@@ -24,7 +24,7 @@ These live in a local checkout of the GrowthBook monorepo, referred to below as 
    | Multiple-comparison correction | `docs/statistics/multiple-corrections.mdx` |
    | Six data-quality checks for analysis | `docs/app/experiment-results.mdx` |
    | Decision framework (ship/roll back/review) | `docs/app/experiment-decisions.mdx` |
-   | Goal vs. secondary vs. guardrail metrics | `docs/app/metrics.mdx`, `docs/app/metrics/` |
+   | Goal vs. secondary vs. guardrail metrics | `docs/app/experiment-configuration.mdx`, `docs/app/metrics.mdx`, `docs/app/metrics/` |
    | Sticky bucketing (commercial) | `docs/app/sticky-bucketing.mdx` |
    | Bandits | `docs/bandits/` |
    | Common pitfalls (SRM causes, bots, etc.) | `docs/kb/experiments/troubleshooting-experiments.mdx`, `docs/faq.mdx` |
@@ -34,14 +34,16 @@ These live in a local checkout of the GrowthBook monorepo, referred to below as 
 
 ### Automated sync
 
-GrowthBook checks these skills against its OpenAPI spec on every API PR (`scripts/check-agent-skills-drift.mjs` in the monorepo). When a merge changes an endpoint a skill uses, it triggers `.github/workflows/sync-from-growthbook.yml` here; the workflow also runs weekly. Each run reviews every watched GrowthBook commit merged since the workflow last succeeded (read from its run history; dry runs don't count), has Claude update the skills using `.github/sync/prompt.md`, and opens or updates the single draft `sync/growthbook` PR. A run that covers one GrowthBook PR adds to the skills PR paired with it instead (the skills PR names it, or its description links the skills PR); otherwise the pairing is listed and left alone. "Needs a human" items go to the "Skills sync: needs a human" issue.
+GrowthBook checks these skills against its OpenAPI spec on every API PR (`scripts/check-agent-skills-drift.mjs` in the monorepo). When a merge changes an endpoint a skill uses, it triggers `.github/workflows/sync-from-growthbook.yml` here; the workflow also runs weekly. Each run reviews the GrowthBook commits after the last reviewed one (saved as the `sync-state` workflow artifact), has Claude update the skills using `.github/sync/prompt.md`, and adds the result to the single draft `sync/growthbook` PR, which it first brings up to date with `main`. Skills PRs paired with a GrowthBook PR in the range (the skills PR names it, or its description links the skills PR) are listed in the sync PR and left alone. "Needs a human" items and guard rejections go to the "Skills sync: needs a human" issue.
 
-Claude runs without a shell or token and can write only `skills/**` skill files and its notes. A guard (`.github/sync/sync.mjs guard`) then rejects edits that add or delete files, add `##` sections other than `## Contents`, change frontmatter other than `description`, add changelog wording, PR links, provider names or emoji, or add a reference to a missing or deprecated endpoint. Review those PRs like any other; the rules in this file still apply. Turn on branch protection for `main` so nothing reaches users without that review.
+Claude runs without a shell or token, can read only the workspace, and can write only `skills/**` skill files and its notes. A guard (`.github/sync/sync.mjs guard`) then compares the files' contents directly and rejects edits that add, delete, or touch anything but existing `skills/**/*.md` files; add `##` sections other than `## Contents`; change frontmatter other than a router `description`; add a reference to a missing or deprecated endpoint; include something that looks like a secret; or exceed 8 files or 200 lines. Changelog-style wording, PR links, emoji, and provider names are listed in the PR description for the reviewer rather than rejected. Review those PRs like any other; the rules in this file still apply.
+
+Protect `main` with required reviews and "Dismiss stale pull request approvals when new commits are pushed", so a later sync commit can't ride on an earlier approval.
 
 ### How to verify before editing a skill
 
 - **For an endpoint path or payload shape:** grep `packages/back-end/src/api/<area>/` for the handler, then read the corresponding validator in `packages/shared/src/validators/`. The Zod schema is the contract.
-- **For a statistical claim or interpretation rule:** read the relevant `docs/statistics/` or `docs/experimentation-analysis/` page. Don't translate intuition from other A/B testing tools — GrowthBook has its own defaults (Bayesian, no correction on guardrails, sequential testing widens CIs).
+- **For a statistical claim or interpretation rule:** read the relevant `docs/statistics/` page or `docs/app/experiment-results.mdx`. Don't translate intuition from other A/B testing tools — GrowthBook has its own defaults (Bayesian, no correction on guardrails, sequential testing widens CIs).
 - **For "what's a footgun" or "what do we tell users":** check `docs/kb/` and `docs/faq.mdx`. These are where the team writes down lessons.
 - **When docs and code disagree:** trust the code, flag the doc drift for the GrowthBook team in a separate note (not in the skill).
 

@@ -1,9 +1,9 @@
 name: Sync with GrowthBook
 run-name: "${{ inputs.dry_run && 'Dry run: Sync with GrowthBook' || 'Sync with GrowthBook' }}"
 
-# Each run reviews every watched GrowthBook commit merged since this workflow
-# last succeeded, so a cancelled or failed run loses nothing; the next one
-# covers its range. Dry runs don't count as syncs.
+# Each run reviews the watched GrowthBook commits after the last reviewed
+# commit, which successful runs save as the `sync-state` artifact. A failed
+# or cancelled run saves nothing, so the next run covers its range too.
 on:
   repository_dispatch:
     types: [growthbook-api-changed]
@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       since:
-        description: GrowthBook commit to review from (default is the last successful run)
+        description: GrowthBook commit to review from (a one-off; does not move the saved sync point)
         required: false
       dry_run:
         description: Show the PR in the job summary instead of pushing
@@ -23,9 +23,10 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
+  actions: read
 
 concurrency:
-  group: sync-from-growthbook
+  group: sync-from-growthbook-${{ inputs.dry_run && 'dry' || 'real' }}
   cancel-in-progress: false
 
 defaults:
@@ -39,6 +40,9 @@ env:
   GROWTHBOOK_DIR: ${{ github.workspace }}/growthbook
   QUESTIONS_TITLE: "Skills sync: needs a human"
   DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+  SINCE: ${{ inputs.since }}
+  BOT_NAME: github-actions[bot]
+  BOT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
 
 jobs:
   sync:
@@ -49,6 +53,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           path: skills
+          ref: main
           fetch-depth: 0
           persist-credentials: false
 
@@ -67,7 +72,7 @@ jobs:
           package-manager-cache: false
 
       # Everything the guard and later steps run comes from here, outside the
-      # directory the model can write to.
+      # workspace the model can read and write.
       - name: Copy trusted tools
         run: |
           TRUSTED="$RUNNER_TEMP/trusted"
@@ -78,18 +83,30 @@ jobs:
           cp growthbook/scripts/agent-skills-watch-paths.txt "$TRUSTED/watch-paths.txt"
           cp growthbook/packages/back-end/generated/spec.yaml "$TRUSTED/spec.yaml"
           node --test "$TRUSTED/sync.test.mjs"
+          # The guard depends on the checker's CLI and JSON shape.
+          node "$TRUSTED/check.mjs" --skills skills --spec "$TRUSTED/spec.yaml" --json > "$TRUSTED/contract.json"
+          # shellcheck disable=SC2016
+          node -e 'const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); for (const k of ["missing", "deprecated", "introduced", "impacted"]) if (!Array.isArray(r[k])) throw new Error(`checker JSON has no ${k} list`);' "$TRUSTED/contract.json"
+
+      - name: Load the last sync point
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          url=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=sync-state&per_page=1" \
+            --jq '.artifacts[0] | select(.expired == false) | .archive_download_url')
+          if [ -z "$url" ]; then
+            echo "::warning::No saved sync point; reviewing the last 7 days."
+            exit 0
+          fi
+          gh api "$url" > "$RUNNER_TEMP/state.zip"
+          unzip -o -q "$RUNNER_TEMP/state.zip" -d "$RUNNER_TEMP/state"
+          sha=$(node -p "JSON.parse(require('fs').readFileSync('$RUNNER_TEMP/state/state.json', 'utf8')).growthbook")
+          echo "Last reviewed GrowthBook commit: $sha"
+          echo "STATE_SHA=$sha" >> "$GITHUB_ENV"
 
       - name: Resolve the commit range
         id: scope
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SINCE: ${{ inputs.since }}
-        run: |
-          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/sync-from-growthbook.yml/runs?branch=main&per_page=50" \
-            > "$SYNC_DIR/runs.json"
-          LAST_SYNC=$(node "$TRUSTED/sync.mjs" last-sync "$SYNC_DIR/runs.json" | sed -n 's/^last_sync=//p')
-          echo "Last successful sync started at: ${LAST_SYNC:-none (reviewing the last 7 days)}"
-          LAST_SYNC="$LAST_SYNC" node "$TRUSTED/sync.mjs" range | tee -a "$GITHUB_OUTPUT"
+        run: node "$TRUSTED/sync.mjs" range | tee -a "$GITHUB_OUTPUT"
 
       # The sync PR links each of these, which also adds a backlink on the
       # GrowthBook PR. A growthbook/skills link in a PR description pairs that
@@ -98,35 +115,42 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          : > "$SYNC_DIR/commit-prs.tsv"
+          : > "$SYNC_DIR/commit-prs.jsonl"
           while read -r sha; do
             gh api "repos/growthbook/growthbook/commits/$sha/pulls" \
-              --jq '.[] | select(.merged_at != null) | [.number, .title, ([(.body // "") | scan("growthbook/skills(?:#|/pull/)([0-9]+)") | .[0]] | unique | join(","))] | @tsv' |
-              while IFS= read -r line; do printf '%s\t%s\n' "$sha" "$line"; done >> "$SYNC_DIR/commit-prs.tsv"
+              --jq ".[] | select(.merged_at != null) | {sha: \"$sha\", number, title, linked: ([(.body // \"\") | scan(\"growthbook/skills(?:#|/pull/)([0-9]+)\") | .[0] | tonumber] | unique)}" \
+              >> "$SYNC_DIR/commit-prs.jsonl"
           done < "$SYNC_DIR/commits.txt"
           node "$TRUSTED/sync.mjs" prs
 
-      - name: Pick the PR to add to
+      - name: Pick the sync PR
         id: target
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          node "$TRUSTED/check.mjs" --skills skills --spec "$TRUSTED/spec.yaml" \
-            --base-spec "$TRUSTED/base-spec.yaml" --json > "$SYNC_DIR/drift-main.json"
           gh pr list -R "$GITHUB_REPOSITORY" --state open --limit 100 \
-            --json number,headRefName,isCrossRepository,body,files > "$SYNC_DIR/open-prs.json"
-          node "$TRUSTED/sync.mjs" pick-target | tee -a "$GITHUB_OUTPUT"
+            --json number,headRefName,headRefOid,isCrossRepository,body,files > "$SYNC_DIR/open-prs.json"
+          node "$TRUSTED/sync.mjs" target | tee -a "$GITHUB_OUTPUT"
           cat "$SYNC_DIR/target.json"
 
-      - name: Check out the target branch
+      # A new sync branch always starts from main. An open one is brought up
+      # to date with main so the model and the drift report see current skills.
+      - name: Check out the sync branch
         id: base
         working-directory: skills
         env:
           KIND: ${{ steps.target.outputs.kind }}
-          BRANCH: ${{ steps.target.outputs.branch }}
         run: |
-          if [ "$KIND" != "new" ]; then
-            git checkout -q -B "$BRANCH" "origin/$BRANCH"
+          if [ "$KIND" = "sync" ]; then
+            git checkout -q -B "$SYNC_BRANCH" "origin/$SYNC_BRANCH"
+            if ! git -c core.hooksPath=/dev/null -c user.name="$BOT_NAME" -c user.email="$BOT_EMAIL" \
+              merge -q --no-edit origin/main; then
+              git merge --abort || true
+              echo "::error::The sync PR conflicts with main. Resolve it on $SYNC_BRANCH, then re-run."
+              exit 1
+            fi
+          else
+            git checkout -q -B "$SYNC_BRANCH" origin/main
           fi
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
@@ -137,12 +161,8 @@ jobs:
         env:
           COMMITS: ${{ steps.scope.outputs.commits }}
         run: |
-          for format in json md; do
-            flag=$([ "$format" = json ] && echo --json || true)
-            # shellcheck disable=SC2086
-            node "$TRUSTED/check.mjs" --skills skills --spec "$TRUSTED/spec.yaml" \
-              --base-spec "$TRUSTED/base-spec.yaml" $flag > "$SYNC_DIR/drift.$format"
-          done
+          node "$TRUSTED/check.mjs" --skills skills --spec "$TRUSTED/spec.yaml" \
+            --base-spec "$TRUSTED/base-spec.yaml" > "$SYNC_DIR/drift.md"
           cat "$SYNC_DIR/drift.md" >> "$GITHUB_STEP_SUMMARY"
           if [ "$COMMITS" != "0" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
@@ -159,10 +179,16 @@ jobs:
           AFTER: ${{ steps.scope.outputs.after }}
         run: |
           node "$TRUSTED/sync.mjs" changes
-          number=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "in:title \"$QUESTIONS_TITLE\"" --json number,title \
-            --jq "map(select(.title == \"$QUESTIONS_TITLE\")) | .[0].number // empty")
+          number=$(gh api "repos/$GITHUB_REPOSITORY/issues?state=open&creator=$BOT_NAME&per_page=100" \
+            --jq "map(select(.title == \"$QUESTIONS_TITLE\" and .pull_request == null)) | .[0].number // empty")
+          echo "questions_issue=$number" >> "$GITHUB_OUTPUT"
+          # Only the job's own posts reach the model, not comments from others.
           if [ -n "$number" ]; then
-            gh issue view "$number" -R "$GITHUB_REPOSITORY" --comments > "$SYNC_DIR/open-questions.md"
+            {
+              gh api "repos/$GITHUB_REPOSITORY/issues/$number" --jq '.body // ""'
+              gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$number/comments" \
+                --jq ".[] | select(.user.login == \"$BOT_NAME\") | .body"
+            } > "$SYNC_DIR/open-questions.md"
           else
             echo "No open questions." > "$SYNC_DIR/open-questions.md"
           fi
@@ -172,9 +198,11 @@ jobs:
             echo "PROMPT_EOF"
           } >> "$GITHUB_OUTPUT"
 
-      # The model gets no shell, no web access, and no token in its tools. It
-      # can write only skill files and its notes; the guard checks the rest.
+      # The model gets no shell, no web access, and no token in the workspace.
+      # Claude Code keeps reads inside the workspace; writes are limited to
+      # skill files and its notes, and the guard checks the rest.
       - name: Update skills with Claude
+        id: claude
         if: steps.drift.outputs.run == 'true'
         uses: anthropics/claude-code-action@v1
         with:
@@ -192,106 +220,150 @@ jobs:
 
       - name: Guard the edits
         id: guard
-        if: steps.drift.outputs.run == 'true'
+        if: steps.claude.outcome == 'success'
+        continue-on-error: true
         env:
           BASE_SHA: ${{ steps.base.outputs.sha }}
         run: |
-          set +e
-          CHECKER="$TRUSTED/check.mjs" SPEC="$TRUSTED/spec.yaml" \
-            NOTES_FILE="$SYNC_DIR/notes.md" REPORT_FILE="$TRUSTED/guard.md" \
+          CHECKER="$TRUSTED/check.mjs" SPEC="$TRUSTED/spec.yaml" NOTES_FILE="$SYNC_DIR/notes.md" \
+            REPORT_FILE="$TRUSTED/guard.md" RESULT_FILE="$TRUSTED/guard.json" \
             node "$TRUSTED/sync.mjs" guard
-          status=$?
-          set -e
-          cat "$TRUSTED/guard.md" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$(node -p "require('$TRUSTED/guard.json').changed.length")" != "0" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Summarize the review
+        if: always() && steps.guard.outcome != 'skipped'
+        run: |
+          [ -f "$TRUSTED/guard.md" ] && cat "$TRUSTED/guard.md" >> "$GITHUB_STEP_SUMMARY"
           if [ -s "$SYNC_DIR/notes.md" ]; then
             { echo; cat "$SYNC_DIR/notes.md"; } >> "$GITHUB_STEP_SUMMARY"
           fi
-          if [ -n "$(git -c core.fsmonitor=false -C skills status --porcelain)" ]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-          exit "$status"
 
       - name: Publish
-        if: steps.guard.outputs.changed == 'true'
+        id: publish
+        if: steps.guard.outcome == 'success' && steps.guard.outputs.changed == 'true'
         working-directory: skills
         env:
           GH_TOKEN: ${{ github.token }}
           KIND: ${{ steps.target.outputs.kind }}
           NUMBER: ${{ steps.target.outputs.number }}
-          BRANCH: ${{ steps.target.outputs.branch }}
+          HEAD_SHA: ${{ steps.target.outputs.head_sha }}
           BEFORE: ${{ steps.scope.outputs.before }}
           AFTER: ${{ steps.scope.outputs.after }}
           TITLE: Sync skills with GrowthBook API changes
         run: |
           node "$TRUSTED/sync.mjs" section
           if [ "$KIND" = "sync" ]; then
-            gh pr view "$NUMBER" --json body --jq .body > "$SYNC_DIR/current-body.md"
+            gh pr view "$NUMBER" -R "$GITHUB_REPOSITORY" --json body --jq .body > "$SYNC_DIR/current-body.md"
           fi
           node "$TRUSTED/sync.mjs" body
           git add skills
-          git -c core.hooksPath=/dev/null -c user.name="github-actions[bot]" \
-            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+          git -c core.hooksPath=/dev/null -c user.name="$BOT_NAME" -c user.email="$BOT_EMAIL" \
             commit -q -F "$SYNC_DIR/commit-message.txt"
 
+          if grep -qF -- "$GH_TOKEN" "$SYNC_DIR/body.md" "$SYNC_DIR/commit-message.txt"; then
+            echo "::error::The PR text contains the workflow token; not publishing."
+            exit 1
+          fi
+
           if [ "$DRY_RUN" = "true" ]; then
-            case "$KIND" in
-              new) action="Open draft PR \"$TITLE\" from \`$BRANCH\`"; heading="PR description" ;;
-              sync) action="Push to \`$BRANCH\` and update the description of #$NUMBER"; heading="PR description after this run" ;;
-              related) action="Push to \`$BRANCH\` and comment on #$NUMBER"; heading="Comment" ;;
-            esac
+            if [ "$KIND" = "new" ]; then
+              action="Open draft PR \"$TITLE\" from \`$SYNC_BRANCH\`"
+            else
+              action="Push to \`$SYNC_BRANCH\` and update the description of #$NUMBER"
+            fi
             {
               echo "## Dry run: nothing was pushed"
               echo
               echo "- **Would:** $action"
               echo "- **Commit:** $(head -1 "$SYNC_DIR/commit-message.txt")"
               echo
-              echo "### $heading"
+              echo "### PR description"
               echo
               cat "$SYNC_DIR/body.md"
               echo
               echo "### Diff"
               echo
               echo '````diff'
-              git show --format= HEAD
+              git show --format= --no-ext-diff --no-textconv HEAD
               echo '````'
             } | tee "$SYNC_DIR/dry-run.md" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
           remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          case "$KIND" in
-            new)
-              git push -q --force "$remote" "HEAD:refs/heads/$BRANCH"
-              gh pr create --draft --head "$BRANCH" --title "$TITLE" --body-file "$SYNC_DIR/body.md"
-              ;;
-            sync)
-              git push -q "$remote" "HEAD:refs/heads/$BRANCH"
-              gh pr edit "$NUMBER" --body-file "$SYNC_DIR/body.md"
-              ;;
-            related)
-              git push -q "$remote" "HEAD:refs/heads/$BRANCH"
-              gh pr comment "$NUMBER" --body-file "$SYNC_DIR/body.md"
-              ;;
-          esac
+          if [ "$KIND" = "sync" ]; then
+            # The PR may have been merged, closed or pushed to while the model ran.
+            now=$(gh pr view "$NUMBER" -R "$GITHUB_REPOSITORY" --json state,headRefOid --jq '"\(.state) \(.headRefOid)"')
+            if [ "$now" != "OPEN $HEAD_SHA" ]; then
+              echo "::error::Sync PR #$NUMBER changed during the run ($now); re-run to review again."
+              exit 1
+            fi
+            git push -q --force-with-lease="refs/heads/$SYNC_BRANCH:$HEAD_SHA" "$remote" "HEAD:refs/heads/$SYNC_BRANCH"
+            gh pr edit "$NUMBER" -R "$GITHUB_REPOSITORY" --body-file "$SYNC_DIR/body.md"
+          else
+            current=$(git ls-remote "$remote" "refs/heads/$SYNC_BRANCH" | cut -f1)
+            git push -q --force-with-lease="refs/heads/$SYNC_BRANCH:$current" "$remote" "HEAD:refs/heads/$SYNC_BRANCH"
+            gh pr create -R "$GITHUB_REPOSITORY" --draft --head "$SYNC_BRANCH" --title "$TITLE" --body-file "$SYNC_DIR/body.md"
+          fi
 
       - name: Record questions for a human
-        if: steps.drift.outputs.run == 'true' && env.DRY_RUN != 'true'
+        id: questions
+        if: always() && steps.claude.outcome == 'success' && steps.guard.outcome != 'skipped' && env.DRY_RUN != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ steps.scope.outputs.before }}
+          AFTER: ${{ steps.scope.outputs.after }}
+          GUARD_OUTCOME: ${{ steps.guard.outcome }}
+          NUMBER: ${{ steps.prompt.outputs.questions_issue }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          node "$TRUSTED/sync.mjs" questions
+          [ -s "$SYNC_DIR/questions-body.md" ] || exit 0
+          if [ -n "$NUMBER" ]; then
+            gh issue comment "$NUMBER" -R "$GITHUB_REPOSITORY" --body-file "$SYNC_DIR/questions-body.md"
+          else
+            gh issue create -R "$GITHUB_REPOSITORY" --title "$QUESTIONS_TITLE" \
+              --body "Questions from the GrowthBook sync job (\`.github/workflows/sync-from-growthbook.yml\`) that need a person. Each comment is one run." > /dev/null
+            NUMBER=$(gh api "repos/$GITHUB_REPOSITORY/issues?state=open&creator=$BOT_NAME&per_page=100" \
+              --jq "map(select(.title == \"$QUESTIONS_TITLE\" and .pull_request == null)) | .[0].number")
+            gh issue comment "$NUMBER" -R "$GITHUB_REPOSITORY" --body-file "$SYNC_DIR/questions-body.md"
+          fi
+
+      # The range counts as reviewed once the model ran and its result was
+      # published or reported, including a guard rejection. A dry run or a
+      # one-off `since` run never moves the sync point.
+      - name: Save the sync point
+        if: >-
+          always() && env.DRY_RUN != 'true' && env.SINCE == '' &&
+          steps.scope.outcome == 'success' && steps.drift.outcome == 'success' &&
+          (steps.drift.outputs.run != 'true' ||
+            (steps.claude.outcome == 'success' &&
+             steps.publish.outcome != 'failure' &&
+             steps.questions.outcome != 'failure'))
+        env:
           AFTER: ${{ steps.scope.outputs.after }}
         run: |
-          [ -s "$SYNC_DIR/notes.md" ] || exit 0
-          awk '/^#### Needs a human/{p=1} p && /^#### / && !/Needs a human/{p=0} p' "$SYNC_DIR/notes.md" > "$SYNC_DIR/questions.md"
-          [ -s "$SYNC_DIR/questions.md" ] || exit 0
-          {
-            echo "From the sync run for growthbook/growthbook@${AFTER:0:10} (${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})."
-            echo
-            cat "$SYNC_DIR/questions.md"
-          } > "$SYNC_DIR/questions-body.md"
-          number=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "in:title \"$QUESTIONS_TITLE\"" --json number,title \
-            --jq "map(select(.title == \"$QUESTIONS_TITLE\")) | .[0].number // empty")
-          if [ -n "$number" ]; then
-            gh issue comment "$number" -R "$GITHUB_REPOSITORY" --body-file "$SYNC_DIR/questions-body.md"
-          else
-            gh issue create -R "$GITHUB_REPOSITORY" --title "$QUESTIONS_TITLE" --body-file "$SYNC_DIR/questions-body.md"
-          fi
+          mkdir -p "$RUNNER_TEMP/save"
+          printf '{"growthbook":"%s"}\n' "$AFTER" > "$RUNNER_TEMP/save/state.json"
+
+      - name: Upload the sync point
+        if: >-
+          always() && env.DRY_RUN != 'true' && env.SINCE == '' &&
+          steps.scope.outcome == 'success' && steps.drift.outcome == 'success' &&
+          (steps.drift.outputs.run != 'true' ||
+            (steps.claude.outcome == 'success' &&
+             steps.publish.outcome != 'failure' &&
+             steps.questions.outcome != 'failure'))
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-state
+          path: ${{ runner.temp }}/save/state.json
+          retention-days: 90
+
+      - name: Fail if the guard rejected the edits
+        if: always() && steps.guard.outcome == 'failure'
+        run: |
+          echo "::error::The guard rejected the edits; see the job summary and the \"$QUESTIONS_TITLE\" issue."
+          exit 1
