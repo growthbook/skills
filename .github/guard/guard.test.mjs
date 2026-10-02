@@ -371,7 +371,7 @@ test("large sync PRs warn; runaway ones are rejected", () => {
   }
 });
 
-test("sync PRs that touch experiment-launch.md must tag the head of data science", () => {
+test("sync PRs that touch an experiment skill must tag the head of data science", () => {
   const { dir, commit } = repo();
   const tools = mkdtempSync(path.join(tmpdir(), "skills-guard-tools-"));
   try {
@@ -382,7 +382,7 @@ test("sync PRs that touch experiment-launch.md must tag the head of data science
       "skills/experiments/references/experiment-launch.md",
     );
     mkdirSync(path.dirname(launch), { recursive: true });
-    const text = SKILL.replace(/flag-toggle/g, "experiment-launch");
+    const text = SKILL.replace(/flag-toggle/g, "experiment-stop");
     writeFileSync(launch, text);
     const base = commit("base");
     writeFileSync(launch, text.replace("revisions/new/toggle", "toggle"));

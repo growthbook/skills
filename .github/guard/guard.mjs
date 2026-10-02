@@ -14,7 +14,7 @@
  * --strict (automated sync PRs) also allows only edits to existing
  * skills/**\/*.md files, no new `##` sections, no frontmatter change other
  * than a router description, a note tagging the head of data science in the
- * PR description when experiment-launch.md changes, at most one
+ * PR description when an experiment skill changes, at most one
  * new workflow shaped like its siblings, and a warning (or, past the hard
  * limits, a rejection) for large changes.
  *
@@ -52,8 +52,7 @@ const WORKFLOW_SECTIONS = [
 ];
 const DESCRIPTION_LIMIT = 1024;
 export const VOICE_AUTHORITY_REVIEWER = "lukesonnet";
-const VOICE_AUTHORITY_FILE =
-  "skills/experiments/references/experiment-launch.md";
+const EXPERIMENTS_DIR = "skills/experiments/";
 
 export const PHRASE_WARNINGS = [
   [
@@ -464,11 +463,11 @@ export function guard({
     }
     if (
       strict &&
-      file === VOICE_AUTHORITY_FILE &&
+      file.startsWith(EXPERIMENTS_DIR) &&
       !new RegExp(`@${VOICE_AUTHORITY_REVIEWER}\\b`, "i").test(prBody)
     ) {
       problems.push(
-        `${file}: belongs to GrowthBook's head of data science; the PR description must say it needs review from @${VOICE_AUTHORITY_REVIEWER}, and the PR stays a draft until he approves`,
+        `${file}: experiment skills need review from GrowthBook's head of data science; the PR description must say it needs review from @${VOICE_AUTHORITY_REVIEWER}, and the PR stays a draft until he approves`,
       );
     }
     const result = checkSkillFile({
