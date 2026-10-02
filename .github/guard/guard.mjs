@@ -36,6 +36,13 @@ import { pathToFileURL } from "node:url";
 
 export const MAX_CHANGED_LINES = 200;
 export const MAX_FILES = 8;
+export const MAX_NEW_WORKFLOW_LINES = 250;
+const WORKFLOW_SECTIONS = [
+  "## Workflow",
+  "## Guardrails",
+  "## Endpoints used",
+  "## Handoffs",
+];
 const DESCRIPTION_LIMIT = 1024;
 const VOICE_AUTHORITY_FILE =
   "skills/experiments/references/experiment-launch.md";
@@ -328,6 +335,54 @@ function newBrokenReferences({ repo, base, head, checker, spec }) {
   }
 }
 
+const routerFor = (file) => file.replace(/\/references\/[^/]+$/, "/SKILL.md");
+
+function isNewWorkflowPath(file, base) {
+  const match = /^skills\/([a-z0-9-]+)\/references\/[a-z0-9-]+\.md$/.exec(file);
+  return Boolean(match) && base.has(`skills/${match[1]}/SKILL.md`);
+}
+
+// A new workflow must have the shape every existing one shares, and its
+// domain router must list it.
+export function checkNewWorkflow({ file, text, router }) {
+  const problems = [];
+  const name = path.posix.basename(file, ".md");
+  const fm = parseFrontmatter(text);
+  if (!fm.error && fm.entries.find(([k]) => k === "name")?.[1] !== name) {
+    problems.push(`${file}: frontmatter \`name\` must be \`${name}\``);
+  }
+  const lines = text.split("\n").length;
+  if (lines > MAX_NEW_WORKFLOW_LINES) {
+    problems.push(
+      `${file}: ${lines} lines; a new workflow in a sync PR may have at most ${MAX_NEW_WORKFLOW_LINES}`,
+    );
+  }
+  const headings = text.split("\n").filter((l) => /^## /.test(l));
+  let at = -1;
+  for (const section of WORKFLOW_SECTIONS) {
+    const next = headings.indexOf(section);
+    if (next === -1 || next < at) {
+      problems.push(
+        `${file}: needs ${WORKFLOW_SECTIONS.map((s) => `\`${s}\``).join(", ")} in that order`,
+      );
+      break;
+    }
+    at = next;
+  }
+  if (lines > 100 && headings[0] !== "## Contents") {
+    problems.push(
+      `${file}: over 100 lines, so it needs a \`## Contents\` index first`,
+    );
+  }
+  if (!/^# /m.test(text)) problems.push(`${file}: needs a \`# ${name}\` title`);
+  if (!router.includes(`references/${name}.md`)) {
+    problems.push(
+      `${routerFor(file)}: must list \`references/${name}.md\` in its workflow table`,
+    );
+  }
+  return problems;
+}
+
 export function guard({ repo, baseSha, headSha, checker, spec, strict }) {
   const problems = [];
   const warnings = [];
@@ -337,8 +392,11 @@ export function guard({ repo, baseSha, headSha, checker, spec, strict }) {
   for (const [file, entry] of head) {
     const before = base.get(file);
     if (!before) {
-      if (strict)
-        problems.push(`${file}: new files are not allowed in sync PRs`);
+      if (strict && !isNewWorkflowPath(file, base)) {
+        problems.push(
+          `${file}: sync PRs may only add a workflow at skills/<existing domain>/references/<name>.md`,
+        );
+      }
       changed.push({ file, before: null, entry });
     } else if (before.sha !== entry.sha || before.mode !== entry.mode) {
       if (
@@ -364,6 +422,7 @@ export function guard({ repo, baseSha, headSha, checker, spec, strict }) {
 
   let changedLines = 0;
   const editedSkills = [];
+  const newWorkflows = [];
   for (const { file, before, entry } of changed) {
     if (entry.mode === "120000" || entry.mode === "160000") continue;
     const after = blob(repo, entry.sha);
@@ -375,8 +434,23 @@ export function guard({ repo, baseSha, headSha, checker, spec, strict }) {
       problems.push(`${file}: added text looks like a secret (${finding})`);
     }
     if (!isSkillFile(file)) continue;
-    editedSkills.push(file);
-    changedLines += added.length + removed.length;
+    if (!before) {
+      newWorkflows.push(file);
+      if (strict) {
+        problems.push(
+          ...checkNewWorkflow({
+            file,
+            text: after,
+            router: head.has(routerFor(file))
+              ? blob(repo, head.get(routerFor(file)).sha)
+              : "",
+          }),
+        );
+      }
+    } else {
+      editedSkills.push(file);
+      changedLines += added.length + removed.length;
+    }
     if (strict && file === VOICE_AUTHORITY_FILE) {
       problems.push(
         `${file}: belongs to GrowthBook's head of data science (CLAUDE.md); sync PRs must not edit it`,
@@ -393,6 +467,11 @@ export function guard({ repo, baseSha, headSha, checker, spec, strict }) {
     problems.push(...result.problems);
     warnings.push(...result.warnings);
   }
+  if (strict && newWorkflows.length > 1) {
+    problems.push(
+      `${newWorkflows.length} new workflow files; sync PRs may add at most one`,
+    );
+  }
   if (strict && editedSkills.length > MAX_FILES) {
     problems.push(
       `${editedSkills.length} skill files changed; the limit for sync PRs is ${MAX_FILES}`,
@@ -403,7 +482,7 @@ export function guard({ repo, baseSha, headSha, checker, spec, strict }) {
       `${changedLines} skill lines changed; the limit for sync PRs is ${MAX_CHANGED_LINES}`,
     );
   }
-  if (editedSkills.length > 0) {
+  if (editedSkills.length + newWorkflows.length > 0) {
     const broken = newBrokenReferences({ repo, base, head, checker, spec });
     if (broken.error) problems.push(broken.error);
     for (const finding of broken.introduced ?? []) {
@@ -416,7 +495,7 @@ export function guard({ repo, baseSha, headSha, checker, spec, strict }) {
       );
     }
   }
-  return { problems, warnings, editedSkills, changedLines };
+  return { problems, warnings, editedSkills, newWorkflows, changedLines };
 }
 
 function parseArgs(argv) {
@@ -459,7 +538,7 @@ function main() {
         ...result.problems.map((p) => `- ${p}`),
       ]
     : [
-        `### Skills guard passed (${mode}; ${result.editedSkills.length} skill files, ${result.changedLines} lines)`,
+        `### Skills guard passed (${mode}; ${result.editedSkills.length} skill files, ${result.changedLines} lines${result.newWorkflows.length ? `, new workflow ${result.newWorkflows.join(", ")}` : ""})`,
       ];
   if (result.warnings.length) {
     lines.push(

@@ -3,9 +3,10 @@ import { execFileSync } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
-  writeFileSync,
   symlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -218,7 +219,7 @@ test("guard checks commits, not the working tree, and fails closed", () => {
     const sneaky = commit("sneaky");
     const strict = run(sneaky).problems;
     assert.ok(
-      strict.some((p) => p.includes("skills/.gitattributes: new files")),
+      strict.some((p) => p.includes("skills/.gitattributes: sync PRs may only add a workflow")),
     );
     assert.ok(
       strict.some((p) => p.includes("README.md: sync PRs may only edit")),
@@ -233,6 +234,102 @@ test("guard checks commits, not the working tree, and fails closed", () => {
     assert.ok(
       run(leaky, { strict: false }).problems.some((p) =>
         p.includes("README.md: added text looks like a secret"),
+      ),
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(tools, { recursive: true, force: true });
+  }
+});
+
+test("sync PRs may add one workflow shaped like its siblings and listed in its router", () => {
+  const { dir, commit } = repo();
+  const tools = mkdtempSync(path.join(tmpdir(), "skills-guard-tools-"));
+  try {
+    const ok = path.join(tools, "ok.mjs");
+    writeFileSync(ok, "console.log(JSON.stringify({ introduced: [] }));");
+    const router = path.join(dir, "skills/feature-flags/SKILL.md");
+    writeFileSync(
+      router,
+      SKILL.replace("name: flag-toggle", "name: feature-flags")
+        .replace("# flag-toggle", "# feature-flags")
+        .concat("| `references/flag-toggle.md` | Toggle |\n"),
+    );
+    const base = commit("router");
+    const run = (head) =>
+      guard({
+        repo: dir,
+        baseSha: base,
+        headSha: head,
+        checker: ok,
+        spec: "x",
+        strict: true,
+      }).problems;
+    const workflow = (name, sections) =>
+      [
+        "---",
+        `name: ${name}`,
+        "description: Copy a flag.",
+        "---",
+        "",
+        `# ${name}`,
+        "",
+        "Copy a flag.",
+        "",
+        ...sections.flatMap((s) => [s, "", "Text.", ""]),
+      ].join("\n");
+    const full = [
+      "## Workflow",
+      "## Guardrails",
+      "## Endpoints used",
+      "## Handoffs",
+    ];
+    const file = path.join(dir, "skills/feature-flags/references/flag-copy.md");
+
+    writeFileSync(file, workflow("flag-copy", full));
+    assert.ok(
+      run(commit("unlisted")).some((p) =>
+        p.includes("must list `references/flag-copy.md`"),
+      ),
+    );
+
+    writeFileSync(
+      router,
+      readFileSync(router, "utf8") + "| `references/flag-copy.md` | Copy |\n",
+    );
+    assert.deepEqual(run(commit("listed")), []);
+
+    writeFileSync(file, workflow("flag-copy", full.slice(0, 2)));
+    assert.ok(run(commit("short")).some((p) => p.includes("in that order")));
+
+    writeFileSync(file, workflow("flag-copier", full));
+    assert.ok(
+      run(commit("misnamed")).some((p) =>
+        p.includes("`name` must be `flag-copy`"),
+      ),
+    );
+
+    writeFileSync(file, workflow("flag-copy", full));
+    writeFileSync(
+      path.join(dir, "skills/feature-flags/references/flag-move.md"),
+      workflow("flag-move", full),
+    );
+    writeFileSync(
+      router,
+      readFileSync(router, "utf8") + "| `references/flag-move.md` | Move |\n",
+    );
+    assert.ok(run(commit("two")).some((p) => p.includes("at most one")));
+
+    mkdirSync(path.join(dir, "skills/billing/references"), { recursive: true });
+    writeFileSync(
+      path.join(dir, "skills/billing/references/invoice.md"),
+      workflow("invoice", full),
+    );
+    assert.ok(
+      run(commit("domain")).some((p) =>
+        p.includes(
+          "skills/billing/references/invoice.md: sync PRs may only add",
+        ),
       ),
     );
   } finally {
