@@ -133,7 +133,9 @@ test("detects known and encoded secrets without flagging skill text", () => {
       .length > 0,
   );
   assert.ok(
-    findSecrets("eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3OD").length > 0,
+    findSecrets(
+      ["ey", "JhbGciOiJSUzI1NiJ9", ".", "ey", "JzdWIiOiIxMjM0NTY3OD"].join(""),
+    ).length > 0,
   );
   for (const ok of [
     "/api/v1/product-analytics/fact-table-exploration",
