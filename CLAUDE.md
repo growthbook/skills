@@ -11,7 +11,7 @@ Every API payload, endpoint path, statistical recommendation, lifecycle claim, o
 These live in a local checkout of the GrowthBook monorepo, referred to below as `<growthbook>`. It's typically cloned as a sibling of this repo (i.e. `../growthbook`); if you don't find it there, ask where the checkout lives rather than guessing.
 
 1. **Back-end source code** — `<growthbook>/packages/back-end/src/api/` and `<growthbook>/packages/shared/src/validators/`. The Zod validators here are the final authority on payload shapes, required fields, and accepted enum values. If docs and code disagree, the code wins.
-2. **Docusaurus docs** — `<growthbook>/docs/docs/`. The canonical source for statistical methodology, lifecycle guidance, and "best practices we learned the hard way." Map of where things live:
+2. **Mintlify docs** — `<growthbook>/docs/`. The canonical source for statistical methodology, lifecycle guidance, and "best practices we learned the hard way." Map of where things live:
 
    | Topic | Doc path |
    | --- | --- |
@@ -22,20 +22,28 @@ These live in a local checkout of the GrowthBook monorepo, referred to below as 
    | Stats engine (Bayesian default, frequentist) | `docs/statistics/overview.mdx` |
    | SRM, peeking, sequential testing | `docs/statistics/sequential.mdx`, `docs/statistics/power.mdx` |
    | Multiple-comparison correction | `docs/statistics/multiple-corrections.mdx` |
-   | Six data-quality checks for analysis | `docs/experimentation-analysis/experiment-results.mdx` |
-   | Decision framework (ship/roll back/review) | `docs/experimentation-analysis/decision-framework.mdx` |
-   | Goal vs. secondary vs. guardrail metrics | `docs/metrics/`, `docs/experimentation-analysis/` |
-   | Sticky bucketing (commercial) | `docs/sticky-bucketing.mdx` |
+   | Six data-quality checks for analysis | `docs/app/experiment-results.mdx` |
+   | Decision framework (ship/roll back/review) | `docs/app/experiment-decisions.mdx` |
+   | Goal vs. secondary vs. guardrail metrics | `docs/app/experiment-configuration.mdx`, `docs/app/metrics.mdx`, `docs/app/metrics/` |
+   | Sticky bucketing (commercial) | `docs/app/sticky-bucketing.mdx` |
    | Bandits | `docs/bandits/` |
    | Common pitfalls (SRM causes, bots, etc.) | `docs/kb/experiments/troubleshooting-experiments.mdx`, `docs/faq.mdx` |
-   | API conventions, auth, rate limit | `docs/api-overview.mdx` |
+   | API conventions, auth, rate limit | `docs/api/introduction.mdx` |
 
 3. **OpenAPI spec generated from the validators** — regenerated via `pnpm --filter back-end generate-openapi` in the GrowthBook repo. Useful as a flat view of every endpoint + body schema.
+
+### Automated sync
+
+GrowthBook checks these skills against its OpenAPI spec on every API PR (`scripts/check-agent-skills-drift.mjs` in the monorepo). A Cursor automation keeps them in sync: when a GrowthBook PR that changes the external REST API merges, it follows `.cursor/automations/sync-agent-skills.md` in the monorepo, updates the skills that need it, flags new endpoints no skill uses, and opens (or adds to) one draft "Sync skills with GrowthBook API changes" PR here on a `cursor/` branch.
+
+Every PR here runs the skills guard (`.github/workflows/skills-guard.yml`, script `.github/guard/guard.mjs`, taken from the base branch). For all PRs it checks that skill frontmatter parses, router descriptions fit 1,024 characters, `references/*.md` links resolve, no new reference to a missing or deprecated endpoint appears, and no added text looks like a secret. Sync PRs (`cursor/` branches, or the `skills-sync` label) also may only edit existing `skills/**/*.md` files (plus at most one new workflow in an existing domain, shaped like its siblings and listed in the router), keep their `##` sections (a `## Contents` index is fine) and frontmatter (except a router `description`), and, when they touch an experiment skill, say in the description that they need review from @lukesonnet. `.github/CODEOWNERS` requests his review on any PR that touches `skills/experiments/`. Sync PRs past 8 files or 200 lines get a warning to split them; past 25 files or 1,000 lines they are rejected. Changelog-style wording, PR links, emoji, and provider names are reported as warnings. Review sync PRs like any other; the rules in this file still apply.
+
+Protect `main` with required reviews and "Dismiss stale pull request approvals when new commits are pushed", so a later sync commit can't ride on an earlier approval.
 
 ### How to verify before editing a skill
 
 - **For an endpoint path or payload shape:** grep `packages/back-end/src/api/<area>/` for the handler, then read the corresponding validator in `packages/shared/src/validators/`. The Zod schema is the contract.
-- **For a statistical claim or interpretation rule:** read the relevant `docs/statistics/` or `docs/experimentation-analysis/` page. Don't translate intuition from other A/B testing tools — GrowthBook has its own defaults (Bayesian, no correction on guardrails, sequential testing widens CIs).
+- **For a statistical claim or interpretation rule:** read the relevant `docs/statistics/` page or `docs/app/experiment-results.mdx`. Don't translate intuition from other A/B testing tools — GrowthBook has its own defaults (Bayesian, no correction on guardrails, sequential testing widens CIs).
 - **For "what's a footgun" or "what do we tell users":** check `docs/kb/` and `docs/faq.mdx`. These are where the team writes down lessons.
 - **When docs and code disagree:** trust the code, flag the doc drift for the GrowthBook team in a separate note (not in the skill).
 
