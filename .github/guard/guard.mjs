@@ -5,7 +5,7 @@
  *   node .github/guard/guard.mjs --repo <checkout> --base <commit> --head <commit>
  *     --checker <growthbook>/scripts/check-agent-skills-drift.mjs
  *     --spec <growthbook>/packages/back-end/generated/spec.yaml
- *     [--strict] [--report <file>]
+ *     [--strict] [--pr-body <file>] [--report <file>]
  *
  * Every change: skill frontmatter must parse, router descriptions fit, links
  * to references/*.md resolve, no new reference to a missing or deprecated
@@ -13,7 +13,8 @@
  *
  * --strict (automated sync PRs) also allows only edits to existing
  * skills/**\/*.md files, no new `##` sections, no frontmatter change other
- * than a router description, no edits to experiment-launch.md, at most one
+ * than a router description, a note tagging the head of data science in the
+ * PR description when experiment-launch.md changes, at most one
  * new workflow shaped like its siblings, and a warning (or, past the hard
  * limits, a rejection) for large changes.
  *
@@ -27,6 +28,7 @@ import {
   appendFileSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -49,6 +51,7 @@ const WORKFLOW_SECTIONS = [
   "## Handoffs",
 ];
 const DESCRIPTION_LIMIT = 1024;
+export const VOICE_AUTHORITY_REVIEWER = "lukesonnet";
 const VOICE_AUTHORITY_FILE =
   "skills/experiments/references/experiment-launch.md";
 
@@ -383,7 +386,15 @@ export function checkNewWorkflow({ file, text, router }) {
   return problems;
 }
 
-export function guard({ repo, baseSha, headSha, checker, spec, strict }) {
+export function guard({
+  repo,
+  baseSha,
+  headSha,
+  checker,
+  spec,
+  strict,
+  prBody = "",
+}) {
   const problems = [];
   const warnings = [];
   const base = tree(repo, baseSha);
@@ -451,9 +462,13 @@ export function guard({ repo, baseSha, headSha, checker, spec, strict }) {
       editedSkills.push(file);
       changedLines += added.length + removed.length;
     }
-    if (strict && file === VOICE_AUTHORITY_FILE) {
+    if (
+      strict &&
+      file === VOICE_AUTHORITY_FILE &&
+      !new RegExp(`@${VOICE_AUTHORITY_REVIEWER}\\b`, "i").test(prBody)
+    ) {
       problems.push(
-        `${file}: belongs to GrowthBook's head of data science (CLAUDE.md); sync PRs must not edit it`,
+        `${file}: belongs to GrowthBook's head of data science; the PR description must say it needs review from @${VOICE_AUTHORITY_REVIEWER}, and the PR stays a draft until he approves`,
       );
     }
     const result = checkSkillFile({
@@ -515,6 +530,7 @@ export function guard({ repo, baseSha, headSha, checker, spec, strict }) {
 function parseArgs(argv) {
   const args = { strict: false };
   const valued = [
+    "--pr-body",
     "--repo",
     "--base",
     "--head",
@@ -543,6 +559,7 @@ function main() {
     checker: path.resolve(args.checker),
     spec: path.resolve(args.spec),
     strict: args.strict,
+    prBody: args["pr-body"] ? readFileSync(args["pr-body"], "utf8") : "",
   });
   const mode = args.strict ? "sync PR rules" : "standard rules";
   const lines = result.problems.length

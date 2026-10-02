@@ -370,3 +370,40 @@ test("large sync PRs warn; runaway ones are rejected", () => {
     rmSync(tools, { recursive: true, force: true });
   }
 });
+
+test("sync PRs that touch experiment-launch.md must tag the head of data science", () => {
+  const { dir, commit } = repo();
+  const tools = mkdtempSync(path.join(tmpdir(), "skills-guard-tools-"));
+  try {
+    const ok = path.join(tools, "ok.mjs");
+    writeFileSync(ok, "console.log(JSON.stringify({ introduced: [] }));");
+    const launch = path.join(
+      dir,
+      "skills/experiments/references/experiment-launch.md",
+    );
+    mkdirSync(path.dirname(launch), { recursive: true });
+    const text = SKILL.replace(/flag-toggle/g, "experiment-launch");
+    writeFileSync(launch, text);
+    const base = commit("base");
+    writeFileSync(launch, text.replace("revisions/new/toggle", "toggle"));
+    const head = commit("edit");
+    const run = (prBody) =>
+      guard({
+        repo: dir,
+        baseSha: base,
+        headSha: head,
+        checker: ok,
+        spec: "x",
+        strict: true,
+        prBody,
+      }).problems;
+    assert.ok(run("Fixes a path.").some((p) => p.includes("@lukesonnet")));
+    assert.deepEqual(
+      run("> **Needs review from @lukesonnet (head of data science).**"),
+      [],
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(tools, { recursive: true, force: true });
+  }
+});

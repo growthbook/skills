@@ -6,7 +6,7 @@ name: Skills guard
 # the base branch, so a PR cannot loosen the check that judges it.
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review]
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled, ready_for_review]
 
 permissions:
   contents: read
@@ -54,6 +54,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           STRICT: ${{ startsWith(github.event.pull_request.head.ref, 'cursor/') || contains(github.event.pull_request.labels.*.name, 'skills-sync') }}
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           base=$(git -C repo merge-base "$BASE_SHA" "$HEAD_SHA")
           mkdir -p "$RUNNER_TEMP/guard"
@@ -65,7 +66,9 @@ jobs:
           fi
           strict=()
           [ "$STRICT" = "true" ] && strict=(--strict)
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
           node "$RUNNER_TEMP/guard/guard.mjs" --repo repo --base "$base" --head "$HEAD_SHA" \
+            --pr-body "$RUNNER_TEMP/pr-body.md" \
             --checker growthbook/scripts/check-agent-skills-drift.mjs \
             --spec growthbook/packages/back-end/generated/spec.yaml \
             --report "$GITHUB_STEP_SUMMARY" "${strict[@]}"
