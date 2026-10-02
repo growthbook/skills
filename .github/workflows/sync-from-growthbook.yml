@@ -78,7 +78,7 @@ jobs:
           TRUSTED="$RUNNER_TEMP/trusted"
           echo "TRUSTED=$TRUSTED" >> "$GITHUB_ENV"
           mkdir -p "$TRUSTED" "$SYNC_DIR"
-          cp skills/.github/sync/* "$TRUSTED/"
+          cp skills/.github/sync/sync.mjs skills/.github/sync/sync.test.mjs skills/.github/sync/prompt.md "$TRUSTED/"
           cp growthbook/scripts/check-agent-skills-drift.mjs "$TRUSTED/check.mjs"
           cp growthbook/scripts/agent-skills-watch-paths.txt "$TRUSTED/watch-paths.txt"
           cp growthbook/packages/back-end/generated/spec.yaml "$TRUSTED/spec.yaml"

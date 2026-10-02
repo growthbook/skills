@@ -38,6 +38,8 @@ GrowthBook checks these skills against its OpenAPI spec on every API PR (`script
 
 Claude runs without a shell or token, can read only the workspace, and can write only `skills/**` skill files and its notes. A guard (`.github/sync/sync.mjs guard`) then compares the files' contents directly and rejects edits that add, delete, or touch anything but existing `skills/**/*.md` files; add `##` sections other than `## Contents`; change frontmatter other than a router `description`; add a reference to a missing or deprecated endpoint; include something that looks like a secret; or exceed 8 files or 200 lines. Changelog-style wording, PR links, emoji, and provider names are listed in the PR description for the reviewer rather than rejected. Review those PRs like any other; the rules in this file still apply.
 
+To try the sync on your machine, run `.github/sync/local/run-local.sh <growthbook checkout>` (add `--stub` to skip the real model). It runs the workflow's own steps as a dry run in a temp workspace, and nothing reaches GitHub: writes through `gh` are dropped and `git push` is refused. It needs Python with PyYAML, and the GrowthBook checkout must include `scripts/check-agent-skills-drift.mjs`.
+
 Protect `main` with required reviews and "Dismiss stale pull request approvals when new commits are pushed", so a later sync commit can't ride on an earlier approval.
 
 ### How to verify before editing a skill
