@@ -22,7 +22,7 @@ Set up and manage a monitored progressive rollout (also called a "safe rollout")
 
 Before configuring, collect:
 - **Datasource ID** — the datasource that tracks exposure and metric events
-- **Exposure query ID** — which assignment query identifies users in the rollout
+- **Exposure query and identifier type** — which assignment query identifies users in the rollout (`assignmentQueries[].id`), and which of its `identifierTypes` the monitoring analyzes on
 - **Guardrail metric IDs** — at least one metric that must not regress (e.g., error rate, crash rate)
 - **Signal metric IDs** (optional) — leading-indicator metrics to watch, not hard gates
 - **SRM action** — what to do on a Sample Ratio Mismatch: `"hold"` (recommended — pause for inspection) or `"rollback"` (aggressive) or `"warn"`
@@ -78,7 +78,7 @@ echo '{
   ],
   "monitoringConfig": {
     "datasourceId": "<ds-id>",
-    "exposureQueryId": "<query-id>",
+    "exposureQuery": { "id": "<query-id>", "identifierType": "<identifier-type>" },
     "guardrailMetricIds": ["<metric-id>"],
     "signalMetricIds": ["<metric-id>"],
     "autoUpdate": true,
@@ -144,6 +144,7 @@ For the full live ramp management action reference (pause, resume, complete, res
 - **`startDate` is optional** — omit it unless the user explicitly wants a delayed start. Most teams start ramps via user action after verifying the publish succeeded.
 - **`cutoffDate` is niche** — don't mention it unless the user asks.
 - **At least one guardrail metric is required.** Monitoring without a guardrail is just observation — if the user can't provide a guardrail metric, recommend using an unmonitored ramp (`references/flag-ramp.md`) instead.
+- **Send `exposureQuery`, not the deprecated `exposureQueryId`.** A bare `exposureQueryId` is rejected when the assignment query declares several `identifierTypes`.
 - **Metrics must be on the same datasource.** The `datasourceId` in `monitoringConfig` must match the datasource where the guardrail metrics are defined. If they're on different datasources, the API will reject the configuration.
 - **`autoUpdate: true` means the system rolls back without human approval.** Mention `autoUpdate: false` only if the user wants to control monitoring cadence manually or is concerned about query costs.
 - **For monitored steps with `holdConditions.requiresApproval`:** each step pause requires explicit human sign-off before the ramp advances.
