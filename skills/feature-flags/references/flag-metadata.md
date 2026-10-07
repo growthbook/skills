@@ -52,7 +52,12 @@ Supported fields and their types:
   "tags": ["<tag>", "<tag>"],
   "neverStale": true,
   "customFields": { "<key>": "<value>" },
-  "jsonSchema": { "<json-schema-object>" }
+  "jsonSchema": {
+    "schemaType": "schema",
+    "schema": "<JSON Schema serialized as a string>",
+    "simple": { "type": "object", "fields": [] },
+    "enabled": true
+  }
 }
 ```
 
@@ -73,7 +78,8 @@ Metadata changes are low-risk — default to offering publish immediately. Hand 
 - **`project` is an ID, not a name.** Always resolve project names via `GET /api/v1/projects` before setting. An empty string `""` clears the project association (moves the flag back to org-wide scope).
 - **`tags` replaces the full array.** It's not additive — if the flag has existing tags and the user only wants to add one, fetch the current tags first, append, and send the full updated array.
 - **`neverStale: true` opts the flag out of stale detection permanently.** Use for kill switches, ops toggles, and license gates. Warn the user: once set, it won't appear in stale-flag reports even if untouched for months.
-- **`jsonSchema` is enterprise-only.** If the org doesn't have the feature, the API returns an error — surface it clearly.
+- **`jsonSchema` is enterprise-only.** If the org doesn't have the feature, the API returns an error — surface it clearly. Enabling a schema also fails on a boolean flag, on a flag whose schema doesn't match its value type, and on a flag backed by a Config (`baseConfig`).
+- **Never send `date` inside `jsonSchema`.** The object is strict and rejects `date`; the server stamps it. `schemaType`, `schema`, `simple`, and `enabled` are all required. To edit an existing schema, take `jsonSchema` from `GET /api/v2/features/<flag-id>`, drop `date`, and send the full object.
 - **Metadata changes still go through approval workflows.** A seemingly innocuous description change can trigger the org's review gate. Use `references/flag-publish.md` and expect the same approval-required / merge-conflict failure modes as any other revision.
 - **`customFields` keys must match the org's configured custom field definitions.** If the key isn't recognized by the org, the API may silently drop it or error. Verify custom field key names are correct.
 
