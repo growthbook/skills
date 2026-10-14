@@ -71,7 +71,7 @@ draft → [request-review] → pending-review → [approve]           → approv
    ```bash
    gb-call GET '/api/v2/flag-revisions?status=pending-review'
    ```
-   Each revision has a `createdBy` field (display name or "API"). Filter for entries where `createdBy` contains the name the user gave, then confirm with the user before proceeding.
+   Each revision has a `createdBy` object with `type` (`dashboard`, `api_key`, or `system`) and, for a member, `name` and `email`. Filter for entries where `createdBy.name` contains the name the user gave, then confirm with the user before proceeding. A revision made by an organization API key has the key's name in `createdBy.name` and no `email`.
 
    **Nothing known** → same broad query, show all results and ask the user to identify theirs.
 
