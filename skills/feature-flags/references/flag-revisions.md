@@ -136,6 +136,7 @@ Works on any non-terminal status — `draft`, `pending-review`, `approved`, `cha
 
 - **`status` accepts comma-separated values.** `?status=draft,approved` returns revisions matching either status. Use `?status=all-drafts` as a shorthand for all four active-draft statuses. On v2 endpoints, omitting `status` defaults to `all-drafts`.
 - **`pending-parent` revisions are auto-managed.** They're created and published automatically as part of a ramp schedule. Never discard them manually; contact GrowthBook support if one appears stuck.
+- **`mine=true` needs a member.** With a Secret Key it fails with a 400. Drop `mine=true` and filter by `author=<email-or-userid>` instead (`mine` and `author` are mutually exclusive).
 - **A flag can have multiple open drafts.** Always show all of them — don't assume there's only one.
 - **`version=new` is the canonical write pattern.** Other write skills use it to create-or-reuse a draft atomically. Only call `POST /revisions` explicitly when the user wants a blank draft before editing.
 - **Discard is irreversible.** The draft and all its pending changes are gone. If the user says "discard" casually as part of "I'll redo this," confirm they understand the changes won't be preserved.
