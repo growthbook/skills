@@ -101,6 +101,8 @@ Resolve English name or ID against `dataSources[].name` / `id`. Capture `DATASOU
 - **Zero matches** → halt and offer three fixes: pick a different datasource (rerun 2b), change the hash attribute (rerun 2a), or add an assignment query for `<HASH_ATTRIBUTE>` in GrowthBook.
 - **Two or more** → list each as `name (identifierType=<value>) — <description>` and let the user pick.
 
+When a **Project ID** is set, also drop queries that aren't available in it. A query's project list is its `projects` when non-empty, otherwise the datasource's `projectIds`; an empty list means every project. Keep a query only if its list is empty or contains the project. Apply this filter before counting matches.
+
 If `assignmentQueries` is empty entirely, halt and tell the user to configure one in GrowthBook before re-running.
 
 **2d. Pick metrics, filtered by datasource.** The API rejects metrics from a different datasource than the experiment's:
@@ -334,6 +336,7 @@ Print a summary:
 - **Ideally one goal metric, two max.** GrowthBook's decision framework treats goal metrics as plural by design and the power calculator supports up to five, but each additional goal dilutes power and complicates the ship/kill decision. Push back at three or more; demote the rest to secondary.
 - **At least one guardrail.** Push back if the user skips guardrails.
 - **`hashAttribute` and `assignmentQuery.identifierType` must match.** Mismatch is a real and recoverable error; surface the fix paths in step 2c.
+- **The assignment query must be available in the experiment's `project`.** A query scoped to other projects makes the POST fail with a `400` ("isn't available for the selected project"); filter in step 2c.
 - **Metrics must live on the experiment's datasource.** Filter `/v1/metrics` and `/v1/fact-metrics` by `datasourceId` in step 2d.
 - **Do NOT mix `templateId` with `datasourceId`/`assignmentQueryId`.** The template path supplies those; the no-template path supplies them explicitly. Mixing yields a `400`.
 - **Flag default = control value.** Variation values for flag-linked experiments are strings on the rule — `"false"`/`"true"` for booleans, `"42"` for numbers, JSON-encoded text for `json`.
