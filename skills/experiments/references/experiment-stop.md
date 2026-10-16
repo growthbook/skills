@@ -106,6 +106,8 @@ Stop a running experiment, optionally declaring a winning variation and ramping 
    echo '<payload-json>' | gb-call POST /api/v1/experiments/<experiment-id>/stop -
    ```
 
+   A `202` means the stop is held for a person's confirmation and the experiment is still running. Handle it as the router's shared conventions describe, and continue to step 7 only when the confirmation is `completed` with a `200` `response`.
+
 7. **State what happens next, and link to the experiment.** Tell the user:
    - The experiment is now stopped; no more traffic accumulates against the experiment.
    - If a winner was declared, the variation ID that "won."
