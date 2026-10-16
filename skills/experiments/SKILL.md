@@ -44,6 +44,7 @@ This router deliberately carries no statistical guidance of its own. Interpretat
 - **Don't mix `templateId` with `datasourceId` / `assignmentQueryId`** on create.
 - **`winnerVariationId` is a variation ID string** (e.g. `var_abc123`) — not an integer index, not a variation name.
 - **Resolve-by-name uses `q`,** which matches name, tracking key, description, and hypothesis. It rejects `!`, `~`, `^`, `>`, `<`, `=` with a 400 — send plain `field:value` tokens and free text. Filter bandits with `bandits`, never `type` (`type` is not a list param; `implementationType` is a different axis).
+- **A `202` on a write means a person must confirm it before it runs.** The key holds it and nothing has changed, so don't report success or start the next step. Give the user `confirmation.summary` and `confirmation.url`, then poll `gb-call GET '/api/v1/confirmations/<confirmation.id>?wait=30'` until `status` is no longer `pending` or `running`; a hold expires after an hour. `completed` → `response` holds the status and body the original request returned, so branch on it as on a direct response. `rejected` → nothing ran; relay `note` and stop. `expired` → nothing ran; resend only if the user still wants it, which asks for a new confirmation.
 - **`result` is the recorded result and survives a restart,** so `result=won` can return a running experiment. Pair it with `status=stopped`.
 - **`limit` caps at 100** on the experiments list.
 - **Show users the experiment name and link the UI path `/experiment/<id>`,** not raw ids alone.
