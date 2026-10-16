@@ -194,7 +194,8 @@ echo '{"archived": true}' \
 
 **What happens server-side.** This isn't a metadata patch. Setting `archived` triggers `createAndPublishRevision` server-side — a new revision is created and published atomically. The same failure modes that affect any v2 publish apply:
 
-- **2xx** → archived. Proceed to step 6 (delete path) or step 8 (archive-only path).
+- **200** → archived. Proceed to step 6 (delete path) or step 8 (archive-only path).
+- **202** → held for a person's confirmation; the flag is not archived. Handle it as the router's failure modes describe, and proceed only when the confirmation is `completed` with a `200` `response`.
 - **403 with "approval required" body** → step 5a.
 - **409** → step 5b (merge conflict; another actor changed the flag between our GET and our archive POST).
 - Other 4xx → halt with the body.
@@ -264,7 +265,8 @@ This goes through the same revision-and-publish flow as the archive — same app
 gb-call DELETE /api/v2/features/<flag-id>
 ```
 
-- **2xx with `{deletedId}`** → proceed to report.
+- **200 with `{deletedId}`** → proceed to report.
+- **202** → held for a person's confirmation; the flag is not deleted. Handle it as the router's failure modes describe, and proceed to report only when the confirmation is `completed` with a `200` `response`.
 - **403** → almost certainly the `restApiBypassesReviews` setting is off. The flag is archived, just not deletable via the API. Surface:
   > Your org requires the "REST API always bypasses approval requirements" setting to be enabled before flags can be deleted via the API. The flag is archived; you can either:
   >

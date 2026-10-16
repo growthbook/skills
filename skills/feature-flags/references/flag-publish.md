@@ -75,7 +75,8 @@ echo '{"comment":"<optional summary of the change>"}' \
 ```
 
 Branch on response:
-- **2xx** → step 6 (done).
+- **200** → step 6 (done).
+- **202** → held for a person's confirmation; the draft is not published. Handle it as the router's failure modes describe, and go to step 6 only when the confirmation is `completed` with a `200` `response`.
 - **400 with approval-required body** → step 3a.
 - **409** → step 3b (merge conflict).
 - **Other 4xx** → halt and surface the raw body.
