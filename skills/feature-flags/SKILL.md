@@ -59,6 +59,7 @@ Verified against the back-end handlers; don't collapse these into one another.
 - **400 on the publish endpoint** means approval is required (`This revision requires approval before publishing`). The policy gate is working as intended — hand to `references/flag-review.md`.
 - **403 on a path that publishes as a side effect** means the same thing, from a different code path: the environment toggle and `POST /v2/features/<id>` with `{archived}` both go through `createAndPublishRevision`, which raises a permission error rather than a bad-request error. Read the body — if it doesn't mention review, the token lacks permission outright and the problem is `GB_API_KEY`.
 - **409 on publish** means the draft's base is stale — the live flag moved. Do not auto-rebase. Halt, show the conflict, let the user resolve it.
+- **422 with `code: "unscoped_rule"` on a rule write** means the org requires rules to target specific environments and the rule applies to all of them. It is not a publish gate — see `references/flag-targeting.md`.
 - **422 on publish** means a publish gate is blocking. The body lists which gates a plain `ignoreWarnings` retry would clear and which need a permission instead.
 
 ## Read-only vs. write
