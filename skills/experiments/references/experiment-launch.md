@@ -245,6 +245,8 @@ echo '<payload-json>' | gb-call POST /api/v2/features/<flag-name>/revisions/new/
 
 `variations[]` must have one entry per experiment variation, in the same order as step 3. Each entry needs **both** `value` (serialized as a string) and `variationId` (the string ID captured in step 3) — `variationId` is required by the v2 features validator and omitting it returns a `400`. Capture the returned `version` for the draft revision.
 
+If the org requires rules to target specific environments, `"allEnvironments": true` returns `422` with `code: "unscoped_rule"`. Send `"allEnvironments": false` with `"environments": ["<env-id>"]` for the environments the user chose. Send `"allowUnscopedRules": true` at the top level of the body, beside `rule`, only if the user explicitly asks for all environments.
+
 Do **not** publish the revision here. Step 7's `/start` call auto-publishes the draft when it flips the experiment to running.
 
 ### 6. Pause for QA before /start
