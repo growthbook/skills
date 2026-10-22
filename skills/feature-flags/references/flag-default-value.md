@@ -24,12 +24,12 @@ Capture `valueType` and current `defaultValue`. Show the user the current defaul
 
 ### 2. Validate the new value
 
-Pre-validate before sending — the API does not catch type mismatches at write time:
+Pre-validate before sending — the endpoint rejects a mismatched value with a `400`:
 
 | `valueType` | Valid `defaultValue` |
 | --- | --- |
 | `boolean` | `"true"` or `"false"` (string, not JSON bool) |
-| `number` | Any string that parses as a number: `"0"`, `"3.14"` |
+| `number` | A decimal number string, no exponent: `"0"`, `"-3.14"` |
 | `json` | Any valid JSON string: `"{\"key\":\"value\"}"` |
 | `string` | Any non-empty string |
 
@@ -61,7 +61,7 @@ Hand off to `references/flag-publish.md` for the publish step.
 - **Default value ≠ a force rule.** The default value applies only when all rules fail to match. If the user wants to serve a specific value to targeted users, they want `references/flag-targeting.md`, not this skill.
 - **This is potentially high-traffic impact.** The default value applies to every unmatched user in every enabled environment. Changing it from the "off" state (e.g., `"false"` → `"true"`) can expose a feature to production traffic if there are no rules. Surface this before publishing.
 - **Changing default value for a boolean flag is equivalent to a global toggle** when there are no targeting rules. Confirm the user understands this.
-- **Type mismatches surface at SDK evaluation time, not at write time.** The v2 default-value endpoint accepts any string. A number flag with `defaultValue: "not-a-number"` won't error until clients evaluate it.
+- **Type and JSON schema mismatches fail at write time with a `400`.** The endpoint checks `defaultValue` against `valueType` and the flag's JSON schema. When the draft stages a new `jsonSchema` (see `references/flag-metadata.md`), the staged schema is the one checked, not the live one.
 
 ## Endpoints used
 
