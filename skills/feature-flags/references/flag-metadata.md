@@ -64,7 +64,7 @@ Capture the returned `version` number for the publish step.
 
 Ask: "Publish this metadata change now, or leave it as a draft?"
 
-Metadata changes are low-risk — default to offering publish immediately. Hand off to `references/flag-publish.md` for the publish step, including any approval-required or merge-conflict handling.
+Metadata changes are low-risk — default to offering publish immediately. The exception is a draft that enables or changes `jsonSchema`: publish re-checks the default value and every rule value against the new schema, and any mismatch blocks it with a `422` (`schema-validation` entry in `gates`). Halt and surface the messages instead of retrying. Hand off to `references/flag-publish.md` for the publish step, including any approval-required or merge-conflict handling.
 
 ## Guardrails
 

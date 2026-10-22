@@ -77,7 +77,7 @@ If the user's request is ambiguous, ask before mutating.
 
 > "The flag has `<N>` existing rule(s); this new rule will be evaluated last. If it needs priority over an existing rule, I can reorder them after adding."
 
-**Pre-validate `value` against `valueType`** — the API doesn't catch mismatches at write time:
+**Pre-validate `value` against `valueType`** — the API rejects mismatches with a `400`:
 - `boolean` → must be `"true"` or `"false"`
 - `number` → must parse as a number
 - `json` → must be valid JSON
@@ -317,7 +317,7 @@ Hand off to `references/flag-publish.md`. It handles:
 - **Scope: exactly one of `allEnvironments: true` or `environments: [...]`.** Never both.
 - **Always fetch attributes before asking for a condition.** Use `?projectId=<id>` when the flag is project-scoped so the server returns only relevant attributes. Surface the list upfront. Never accept an attribute name the user provides without confirming it's in the returned list — unregistered attributes silently never match at SDK evaluation time.
 - **Conditions are JSON strings.** Validate they're parseable. Prefer Saved Groups over hand-written conditions — they're reusable and managed.
-- **`valueType` mismatch is a footgun.** The v2 rule-add handler doesn't validate at write time. Always pre-validate client-side.
+- **A rule value that doesn't match `valueType` or the flag's JSON schema fails with a `400`.** The v2 rule-add and rule-edit handlers check every value in the rule. When the draft stages a new `jsonSchema` (see `references/flag-metadata.md`), they check against the staged schema. Pre-validate client-side so the user sees the problem before the call.
 - **Refuse empty patches.** A no-op revision update burns rate limit and can reset review approvals.
 - **New rules append to the bottom.** First match wins. Surface evaluation order concerns before posting.
 - **Self-approval blocked.** Don't attempt `submit-review` after `request-review`.
