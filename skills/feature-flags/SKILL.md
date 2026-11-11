@@ -60,6 +60,10 @@ Verified against the back-end handlers; don't collapse these into one another.
 - **403 on a path that publishes as a side effect** means the same thing, from a different code path: the environment toggle and `POST /v2/features/<id>` with `{archived}` both go through `createAndPublishRevision`, which raises a permission error rather than a bad-request error. Read the body — if it doesn't mention review, the token lacks permission outright and the problem is `GB_API_KEY`.
 - **409 on publish** means the draft's base is stale — the live flag moved. Do not auto-rebase. Halt, show the conflict, let the user resolve it.
 - **422 on publish** means a publish gate is blocking. The body lists which gates a plain `ignoreWarnings` retry would clear and which need a permission instead.
+- **202 on any write** means a person must confirm it before it runs. The key holds it, and nothing has changed yet, so don't report success or start the next step. Give the user `confirmation.summary` and `confirmation.url`, then poll `gb-call GET '/api/v1/confirmations/<confirmation.id>?wait=30'` until `status` is no longer `pending` or `running`; a hold expires after an hour.
+  - `completed` → `response` holds the status and body the original request returned. Branch on it exactly as you would on a direct response; it can be an error. Confirming is not a review approval.
+  - `rejected` → nothing ran. Relay `note` to the user and stop.
+  - `expired` → nothing ran. Resend the request only if the user still wants it; that asks for a new confirmation.
 
 ## Read-only vs. write
 
