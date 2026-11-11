@@ -72,6 +72,8 @@ Fetch results, refresh the snapshot only when the cached data is over 24 hours o
 
    The response is `{ snapshot: { id, experiment, status } }`. Capture `snapshot.id`.
 
+   If the experiment is `stopped` and the organization has disabled updating results for stopped experiments, the POST returns `422` with a `warnings` array. Skip 3b and 3c and tell the user the results are frozen by an organization setting. If step 1 returned a result, report it with its `dateUpdated`. Otherwise, stop and explain that no saved result exists for the requested phase/dimension and the current setting prevents creating one. Do not resend with `ignoreWarnings`.
+
    **3b. Poll for completion.** Snapshot creation is asynchronous:
 
    ```bash
@@ -173,6 +175,7 @@ Fetch results, refresh the snapshot only when the cached data is over 24 hours o
 - **Bandits are out of scope.** `type === "multi-armed-bandit"` reports per-arm probabilities and dynamically reallocates traffic. Halt and tell the user to read bandit results in the UI.
 - **Activation-metric bias hides as "passing SRM."** If the experiment uses an activation metric that is downstream of variation differences (e.g., "completed signup" when variations affect signup completion), the overall split can look fine while the activated cohort is biased. The dashboard surfaces this; flag it when you spot the pattern in metadata.
 - **Don't promote a secondary to a primary.** If the primary didn't move, the experiment didn't move — secondaries are exploratory.
+- **Never send `ignoreWarnings` on the snapshot request unless the user explicitly asks.** It overrides the organization's setting that freezes results for stopped experiments. A `422` there is a decision for a person, not a retry condition.
 - **Polling has a ceiling.** 60 iterations × 5s = 5 minutes. If the snapshot isn't done by then, stop and report. Don't run for hours.
 - **Snapshot timestamp matters.** Always surface `result.dateUpdated` when reporting results — it's both how step 2 decides whether to refresh and how the user judges whether a slow-traffic experiment has moved. Stale snapshots are common; don't hide them.
 - **24h is a deliberate ceiling, not the auto-refresh cadence.** The server auto-refreshes every 6h by default, so a snapshot under 24h has almost always been refreshed at least once. The skill's 24h bar gives the user a useful conservative window without paying snapshot compute on data that hasn't moved. Don't drop it to "any data older than a minute" — that's how you pin a busy org against the 60 rpm limit.
