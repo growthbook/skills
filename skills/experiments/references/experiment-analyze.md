@@ -72,7 +72,7 @@ Fetch results, refresh the snapshot only when the cached data is over 24 hours o
 
    The response is `{ snapshot: { id, experiment, status } }`. Capture `snapshot.id`.
 
-   If the experiment is `stopped` and the organization has disabled updating results for stopped experiments, the POST returns `422` with a `warnings` array. Skip 3b and 3c, report the existing result with its `dateUpdated`, and tell the user the results are frozen by an organization setting. Do not resend with `ignoreWarnings`.
+   If the experiment is `stopped` and the organization has disabled updating results for stopped experiments, the POST returns `422` with a `warnings` array. Skip 3b and 3c and tell the user the results are frozen by an organization setting. If step 1 returned a result, report it with its `dateUpdated`. Otherwise, stop and explain that no saved result exists for the requested phase/dimension and the current setting prevents creating one. Do not resend with `ignoreWarnings`.
 
    **3b. Poll for completion.** Snapshot creation is asynchronous:
 
