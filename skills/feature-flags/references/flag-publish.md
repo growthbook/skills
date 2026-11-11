@@ -217,6 +217,7 @@ echo '{"strategy":"draft"}' \
 - **Never auto-rebase.** Each conflict field requires a human decision. Guessing "overwrite" on everything could silently discard concurrent teammate changes.
 - **Never discard a draft to escape a merge conflict.** The draft contains user work. Help them rebase instead.
 - **Self-approval is blocked server-side.** If the user who created the draft tries to approve it in step 3a, it will fail. They need a different reviewer.
+- **`mine=true` needs a member.** With a Secret Key it fails with a 400. Drop it and filter by `author=<email-or-userid>` instead.
 - **After a successful rebase, the draft is still in `draft` status.** Retry publish explicitly — rebase does not auto-publish.
 - **Discard is irreversible.** The draft cannot be recovered. Confirm before calling.
 - **`strategy: "publish"` on revert bypasses review.** Org approval settings may still gate it. Default to `"draft"` strategy; only offer `"publish"` when the user explicitly wants an immediate rollback.
