@@ -275,7 +275,8 @@ Either can fail with a `400`. Branch:
 
 - Body starts with **"This revision requires approval before publishing"** → step 7a.
 - Body lists incomplete checklist items → step 7b.
-- `2xx` → step 8.
+- `200` → step 8.
+- `202` → the start is held for a person's confirmation and the experiment is not running. Handle it as the router's shared conventions describe, and go to step 8 only when the confirmation is `completed` with a `200` `response`.
 
 #### 7a. Approval required
 
