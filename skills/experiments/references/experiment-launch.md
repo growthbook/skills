@@ -61,7 +61,7 @@ Track progress with this checklist. Do not skip or reorder.
 - [ ] 3. Create the experiment in draft (or adopt an existing draft)
 - [ ] 4. Delivery: 4A create/reuse the flag + add the experiment-ref rule, or 4B create the visual changeset + describe each variation
 - [ ] 5. GET the start checklist; prompt user to QA the experiment and its delivery
-- [ ] 6. POST /start; branch to 6a (approval) or 6b (checklist) on 400
+- [ ] 6. POST /start; branch to 6a (approval) or 6b (checklist) on a refused start
 - [ ] 7. Report links and state
 ```
 
@@ -186,14 +186,14 @@ gb-call GET /api/v1/experiments/<exp_id>
 ```
 
 - `status` must be `draft`; otherwise halt (running/stopped experiments are `experiment-analyze` / `experiment-stop` territory).
-- Capture `variations[].variationId`, `hashAttribute`, `hasVisualChangesets`, and `linkedFeatures`.
+- Capture `variations[].variationId`, `hashAttribute`, `hasVisualChangesets`, `linkedFeatures`, and `settings.datasourceId`.
 - **Let the draft decide the delivery.** The draft's existing delivery wins over what was inferred from the Required inputs:
   - `linkedFeatures` non-empty → **Delivery = `flag`**, and the flag name is `linkedFeatures[0]` (reuse path in 4A; if the experiment-ref rule is already on it, 4A skips straight to step 5).
   - `hasVisualChangesets: true` → **Delivery = `visual`** (4B reuses the changeset).
   - Both set → halt; a draft with two delivery methods was assembled by hand in the UI and this workflow shouldn't add to it.
   - Neither set → keep the inferred delivery.
   If the draft's delivery contradicts what the user asked for (they named a flag but the draft is a visual experiment, or vice versa), stop and say so rather than adding a second delivery method — an experiment with both a flag rule and a changeset serves the change twice.
-- **If `datasource` is empty** — the usual state for a draft made in the Visual Editor extension — fill it in. The update endpoint takes no `templateId`, so run step 2 (or read the chosen template's `datasource`, `exposureQueryId`, `goalMetrics` from step 1) and send the fields explicitly:
+- **If `settings.datasourceId` is `""`** — the usual state for a draft made in the Visual Editor extension — fill it in. The update endpoint takes no `templateId`, so run step 2 (or read the chosen template's `datasource`, `exposureQueryId`, `goalMetrics` from step 1) and send the fields explicitly:
 
 ```bash
 echo '{
@@ -206,9 +206,9 @@ echo '{
 }' | gb-call POST /api/v1/experiments/<exp_id> -
 ```
 
-`datasourceId` can only be set while the experiment has none; once set it cannot be changed via the API. Metrics can also be added or changed later with the same call, including after the experiment is running.
+Metrics can also be added or changed later with the same call, including after the experiment is running.
 
-- **If `datasource` is already set**, only send the metrics fields that are missing or that the user wants changed.
+- **If `settings.datasourceId` is already set**, do not send `datasourceId` — a different value switches the datasource, which needs an `assignmentQueryId` from the new one and drops every metric that isn't on it. Only send the metrics fields that are missing (`settings.goals`, `settings.secondaryMetrics`, `settings.guardrails`) or that the user wants changed.
 
 ### 4. Delivery
 
@@ -288,7 +288,7 @@ Do **not** publish the revision here. Step 6's `/start` call auto-publishes the 
 
 #### 4B. Visual Editor
 
-These `/visual-editor/*` endpoints need a **Personal Access Token**; an org Secret Key is rejected with a message about attribution. Route to **gb-setup** rather than treating it as a permissions problem. `ai/edit` requires the organization to opt-in to AI features on **Settings → AI** before use.
+These `/visual-editor/*` endpoints need a **Personal Access Token**; an org Secret Key is rejected with a message about attribution. Route to **gb-setup** rather than treating it as a permissions problem. `ai/edit` requires the organization to opt-in to AI features on **Settings → AI Settings** before use.
 
 **4B-i. Check for a collision on the same page.**
 
@@ -296,7 +296,7 @@ These `/visual-editor/*` endpoints need a **Personal Access Token**; an org Secr
 gb-call GET /api/v1/visual-editor/bootstrap
 ```
 
-If a `recentExperiments[]` entry has a `primaryUrl` matching the page URL and a `status` of `draft` or `running`, **warn** (don't halt): two visual experiments on one page interfere with each other. Continue only if the user confirms.
+Check the page URL against each `recentExperiments[]` entry's `urlPatterns` — they can be wildcards or regexes, so match them rather than string-comparing — and skip the entry whose `experimentId` is `<exp_id>` itself. If an entry with a `status` of `draft` or `running` covers the page, **warn** (don't halt): two visual experiments on one page interfere with each other. Continue only if the user confirms. The list is capped at 30 entries, drafts first, so a clean result doesn't prove the page is free.
 
 **4B-ii. Create the changeset** (skip if the draft already has `hasVisualChangesets: true` — then `GET /api/v1/experiments/<exp_id>/visual-changesets`, reuse it, and ask which one if there are several):
 
@@ -326,14 +326,14 @@ echo '{
 
 The field is **`variationId`** (the `var_...` string from step 3), not the variation `key`; anything else returns `variationId does not belong to the given changeset`.
 
-From the response: show `explanation`; confirm `saved: true` and a `visualChangeId`, whose absence means nothing was written; summarise `mutations`/`css`/`js` rather than dumping them; surface `warnings` (capped or failed image generation — the text edits still applied).
+From the response: show `explanation` — it also names anything GrowthBook skipped (an element it couldn't find on the page, an unsafe change). `saved: true` only means the request completed: if `mutations` is empty and `css`, `js`, and `insert` are absent, nothing changed, so say so and prompt again rather than reporting success. Summarise `mutations`/`css`/`js` rather than dumping them; surface `warnings` (capped or failed image generation — the text edits still applied).
 
 - **Images need no extra call.** "Replace the hero image with a photo of a team collaborating" is generated, stored, and referenced inside this one request.
 - **To refine**, prompt again with the same `variationId` — mutations accumulate, `css`/`js` are rewritten whole. Pass `conversationHistory` (max 12 `{"role": "user"|"assistant", "text": "..."}` turns) so "less neon" resolves against the previous turn.
 - **A third variation**: `POST /api/v1/visual-editor/add-variant` with `{"visualChangesetId": "<id>"}`, then prompt its `newVariationId`.
 - **Grounding is best-effort and silent.** If GrowthBook can't fetch or parse the page (login wall, client-rendered app, redirect), it still attempts changes blind (e.g. assuming an `h1` exists). The user must preview before starting.
 
-Preview link for the user: `<page URL>?gb-visual-editor-v2=<visualChangeset.id>` (requires the Visual Editor Chrome extension).
+Preview link for the user: the page URL with the query parameter `gb-visual-editor-v2=<visualChangeset.id>` added (requires the Visual Editor Chrome extension).
 
 ### 5. Check the pre-launch checklist and pause for QA
 
@@ -344,13 +344,20 @@ gb-call GET /api/v1/experiments/<exp_id>/start-checklist
 ```
 
 - `status: "ready"` → proceed to QA below.
-- `status: "notReady"` → list every `checklistItems[]` entry with `required: true` and `status: "incomplete"`, with its `reason`. Items with `manual: true` are custom checklist tasks the org defined; once the user confirms each is genuinely done, mark them:
+- `status: "notReady"` → list every `checklistItems[]` entry with `required: true` and `status: "incomplete"`, with its `reason`, then resolve each by its `key`:
+  - `manual: true` — a custom checklist task the org defined. Once the user confirms each is genuinely done, mark them:
 
-```bash
-echo '{"keys": ["<task key>", ...]}' | gb-call POST /api/v1/experiments/<exp_id>/start-checklist/manual/complete -
-```
+    ```bash
+    echo '{"keys": ["<task key>", ...]}' | gb-call POST /api/v1/experiments/<exp_id>/start-checklist/manual/complete -
+    ```
 
-Anything else (a linked-feature merge conflict, a pending approval, unrelated draft changes) has to be fixed in the GrowthBook UI; items with `hardBlock: true` can't be bypassed even with `skipChecklist`. Re-run the GET after fixes.
+  - `datasource`, `exposureQuery`, `goalMetric` — fill them in with the step 3-alt update call.
+  - `visualEditorSdk` — no SDK Connection serving this project has "Include Visual Experiments" enabled, so the changes would never render. The user enables it on the connection in GrowthBook.
+  - `pendingApproval:<flag-name>` — the flag draft needs approval. Don't stop here: `/start` passes it when the token can bypass approvals and otherwise refuses, which is step 6a.
+  - Anything else (a linked-feature merge conflict, unrelated draft changes) has to be fixed in the GrowthBook UI.
+
+  Items with `hardBlock: true` can't be bypassed even with `skipChecklist`. Re-run the GET after fixes.
+- `visual` only: an incomplete `visualEditorChanges` item (it is not `required`) means no variation has a saved change — go back to 4B-iii.
 
 If the user seems to want you to also embed the feature flag in the codebase (`flag`), now is a good time to do that.
 
@@ -358,7 +365,7 @@ Stop and surface the UI links so the user can QA:
 
 - Experiment (targeting, metrics): `/experiment/<exp_id>`
 - `flag`: the flag default and the rule's variation values at `/features/<flag-name>?v=<version>`
-- `visual`: the preview link from 4B-iii, and remind them that **visual changes render on the live site only if an SDK Connection has "Include Visual Experiments" enabled** — the checklist checks that a connection exists, not that this box is ticked, and it's the most common reason a visual test appears to do nothing.
+- `visual`: the preview link from 4B-iii
 
 Wait for the user's explicit go-ahead before proceeding to step 6.
 
@@ -373,10 +380,10 @@ The `/start` endpoint does two things server-side:
 1. Publishes any pending draft feature revision from step 4A (`publishPendingFeatureDraftsForExperiment`). No-op for `visual`.
 2. Enforces the org's pre-launch checklist.
 
-Either can fail with a `400`. Branch:
+Either can refuse the start: a `409` with code `checklist_incomplete` and a `gates[]` array naming each blocker. Branch:
 
-- Body starts with **"This revision requires approval before publishing"** → step 6a.
-- Body lists incomplete checklist items → step 6b.
+- A gate with `type: "approval-required"` → step 6a.
+- Any other gate → step 6b.
 - `2xx` → step 7.
 
 #### 6a. Approval required
@@ -440,7 +447,7 @@ Print a summary:
 - **`hashAttribute` and `assignmentQuery.identifierType` must match.** Mismatch is a real and recoverable error; surface the fix paths in step 2c.
 - **Metrics must live on the experiment's datasource.** Filter `/v1/metrics` and `/v1/fact-metrics` by `datasourceId` in step 2d.
 - **Do NOT mix `templateId` with `datasourceId`/`assignmentQueryId`.** The template path supplies those; the no-template path supplies them explicitly. Mixing yields a `400`.
-- **`templateId` is create-only.** The update endpoint (`POST /experiments/<id>`) has no `templateId`; when adopting a draft, send the template's datasource, assignment query, and metrics as explicit fields. `datasourceId` is settable only while the draft has none.
+- **`templateId` is create-only.** The update endpoint (`POST /experiments/<id>`) has no `templateId`; when adopting a draft, send the template's datasource, assignment query, and metrics as explicit fields. Don't re-send `datasourceId` on a draft that already has one — a different value switches the datasource and drops the metrics that aren't on it.
 - **Prefer a flag when you control the code.** The Visual Editor is for pages you can't ship code to. A change that could live in source belongs behind a flag — no flicker, no dependence on the page's DOM staying put.
 - **Flag default = control value.** Variation values for flag-linked experiments are strings on the rule — `"false"`/`"true"` for booleans, `"42"` for numbers, JSON-encoded text for `json`.
 - **Reuse with care.** Always run the 4A compatibility checks before reusing an existing flag. Silently attaching to a flag with the wrong `valueType`, wrong `project`, or a conflicting rule will break the experiment or step on a teammate's in-flight test.
@@ -448,7 +455,7 @@ Print a summary:
 - **Approval failures: do not self-approve.** The API blocks approval on drafts you created. Walk the user through 6a instead.
 - **Checklist failures: do not bypass by default.** Only set `skipChecklist: true` after the user explicitly opts in, and it never clears `hardBlock` items.
 - **`/visual-editor/*` needs a PAT.** An org Secret Key works everywhere else in this domain and is rejected here — route to **gb-setup**.
-- **Only drafts accept visual changes.** `ai/edit` with `persist` rejects running or stopped experiments; the user returns the experiment to draft in GrowthBook to edit.
+- **Visual changes go on drafts.** `ai/edit` with `persist` rejects a running experiment, and this workflow never edits one that has started.
 - **Visual grounding is best-effort and silent.** If the page can't be fetched or parsed, GrowthBook still writes DOM changes blind. The user previews before `/start`, every time.
 - **Visual caps:** 8000 characters per `prompt`, 3 images per prompt, 60 requests/minute, plus a daily AI cap on Cloud.
 
