@@ -31,7 +31,7 @@ Collect these first; do not POST with a guess:
 - The metric type
 - An existing fact table, or the datasource and SQL needed to create one
 - The identifier types used by a new fact table
-- The metric's columns or funnel steps, verified against detected fact-table columns
+- The metric's columns, funnel steps, or compound components, verified against detected fact-table columns
 
 ## Workflow
 
@@ -97,7 +97,7 @@ If `columnRefreshPending` is true, wait and retry instead of guessing column nam
 
 ### 4. Choose the metric type
 
-GrowthBook supports seven fact metric types:
+GrowthBook supports eight fact metric types:
 
 | Type | Measures | Required definition |
 | --- | --- | --- |
@@ -108,12 +108,13 @@ GrowthBook supports seven fact metric types:
 | `ratio` | One aggregate divided by another | Numerator and denominator |
 | `quantile` | A percentile of event values or unit aggregates | Numerator and `quantileSettings` |
 | `funnel` | Conversion through two or more ordered steps | `funnelSettings`; no numerator or denominator |
+| `compound` | Units with at least one matching event for every component, in any order | `compoundSettings`; no numerator or denominator |
 
 For `proportion` and `retention`, the server forces the numerator column to `$$distinctUsers`. For `dailyParticipation`, it forces `$$distinctDates`. Narrow which rows count with `rowFilters`.
 
 ### 5. Build a standard numerator
 
-Skip to step 6 for a funnel.
+Skip to step 6 for a funnel or compound metric.
 
 `factTableId` is required. Add `column` for `mean`, `ratio`, and `quantile`. Common special columns are `$$count`, `$$distinctUsers`, and `$$distinctDates`.
 
@@ -179,6 +180,22 @@ For a funnel, omit `numerator` and `denominator`. Add two to twenty ordered step
 
 The v1 create API supports `ordering: "sequential"` only. Each step needs a name, fact table, `rowFilters`, and `optional`; `conversionWindow` may be null.
 
+For a compound metric, omit `numerator` and `denominator`. Add two to twenty `components`; a unit passes when it has at least one matching event for every component:
+
+```json
+{
+  "metricType": "compound",
+  "compoundSettings": {
+    "components": [
+      { "factTableId": "ftb_checkout", "rowFilters": [] },
+      { "factTableId": "ftb_orders", "rowFilters": [] }
+    ]
+  }
+}
+```
+
+Each component needs `factTableId` and `rowFilters`.
+
 Set `"inverse": true` when a decrease is the improvement, such as latency or refunds. Optional metadata includes `projects`, `tags`, `displayAsPercentage`, and `managedBy`.
 
 ### 7. Confirm and create the metric
@@ -212,12 +229,13 @@ State explicitly that analysis settings came from organization defaults and shou
 
 ## Guardrails
 
-- **The API currently supports seven types, including `funnel`.** Funnel metrics use `funnelSettings` and reject a numerator or denominator; every other type requires a numerator and rejects `funnelSettings`.
+- **The API currently supports eight types, including `funnel` and `compound`.** Funnel metrics use `funnelSettings` and compound metrics use `compoundSettings`; both reject a numerator or denominator and reject the other type's settings. Every other type requires a numerator and rejects `funnelSettings` and `compoundSettings`.
+- **Compound components must be unique and span at most five fact tables.** The metric's datasource comes from the first component, and every component's fact table must use it. `quantileSettings` is rejected.
 - **`numerator.column` is overwritten for `proportion`, `retention`, and `dailyParticipation`.** The handler substitutes `$$distinctUsers` for the first two and `$$distinctDates` for the third. It also clears their aggregation.
 - **A `ratio` requires a denominator at model validation time.** The request schema marks it optional, but creation fails with `Denominator required for ratio metric` when it is absent. Denominators sent for other standard metric types are silently cleared.
 - **A quantile requires `quantileSettings` at model validation time.** The request schema marks it optional, but creation fails without it. `quantile` must be from 0.001 through 0.999 in increments of 0.001.
 - **Do not send `datasource` on a fact metric.** It is derived from the primary fact table. A ratio denominator may use another fact table only when both tables use the same datasource.
-- **Funnel, quantile, and retention metrics are premium features.** Their model validation fails when the organization lacks `funnel-metrics`, `quantile-metrics`, or `retention-metrics`, respectively.
+- **Funnel, compound, quantile, and retention metrics are premium features.** Their model validation fails when the organization lacks `funnel-metrics`, `compound-metrics`, `quantile-metrics`, or `retention-metrics`, respectively.
 - **`userIdTypes` must exist on the datasource.** Read them from `GET /api/v1/data-sources`; an unknown value fails with `Invalid userIdType: <value>`.
 - **Fact-table column detection is conditional and asynchronous.** When `columnRefreshPending` is true, wait for detection. Supplied complete column definitions may already be present in the create response, so do not assume `columns[]` is always empty.
 - **Project IDs are validated on create.** Resolve project names with `GET /api/v1/projects`.
