@@ -83,7 +83,7 @@ If the user's request is ambiguous, ask before mutating.
 - `json` → must be valid JSON
 - `string` → any non-empty string
 
-**Resolve scope.** Confirm the environment IDs against `environmentSettings`. Set either `allEnvironments: true` or `environments: [...]` — never both.
+**Resolve scope.** Confirm the environment IDs against `environmentSettings`. Set either `allEnvironments: true` or `environments: [...]` — never both. Prefer `environments`: an org can require rules to target specific environments (see Guardrails).
 
 **Fetch available attributes** — do this before asking the user to describe any condition. If the flag has a project, pass it as `projectId` to get only relevant attributes (org-wide + project-scoped); omit it for org-wide flags:
 
@@ -315,6 +315,7 @@ Hand off to `references/flag-publish.md`. It handles:
 - **`force` vs `rollout` is mostly cosmetic server-side.** A force rule with `coverage < 1` is effectively a rollout. Default to `force` unless the user says "percentage" or specifies coverage; the server auto-flips.
 - **`coverage < 1` requires `hashAttribute`.** Validate before POSTing.
 - **Scope: exactly one of `allEnvironments: true` or `environments: [...]`.** Never both.
+- **Never send `allowUnscopedRules: true` on your own.** When the org requires rules to target specific environments, adding a rule that applies to all environments (`allEnvironments: true`, or neither scope field sent), or editing a rule to widen it to all environments, returns `422` with `code: "unscoped_rule"`. Halt and ask the user for specific `environments`. Only when the user explicitly asks for an all-environments rule, resend the same request with `"allowUnscopedRules": true` at the top level of the body, beside `rule`.
 - **Always fetch attributes before asking for a condition.** Use `?projectId=<id>` when the flag is project-scoped so the server returns only relevant attributes. Surface the list upfront. Never accept an attribute name the user provides without confirming it's in the returned list — unregistered attributes silently never match at SDK evaluation time.
 - **Conditions are JSON strings.** Validate they're parseable. Prefer Saved Groups over hand-written conditions — they're reusable and managed.
 - **`valueType` mismatch is a footgun.** The v2 rule-add handler doesn't validate at write time. Always pre-validate client-side.
