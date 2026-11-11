@@ -31,7 +31,7 @@ Create a new feature flag in GrowthBook. We always set `{enabled: false}` for ev
    ```
    Build the map with each environment disabled.
 
-6. **Confirm naming.** The v2 endpoint regex accepts `[a-zA-Z0-9_.:|-]` (the user-facing docs and error messages recommend the narrower `[a-zA-Z0-9_-]`). Default to **kebab-case** (`new-checkout-flow`, `dark-mode`, `pricing-experiment-2026-q2`) — it matches what the docs recommend, keeps keys consistent across teams, and avoids any future tightening of the regex. Show the proposed key to the user before creating.
+6. **Confirm naming.** The v2 endpoint regex accepts `[a-zA-Z0-9_.:|-]`. Default to **kebab-case** (`new-checkout-flow`, `dark-mode`, `pricing-experiment-2026-q2`) — it keeps keys consistent across teams and avoids any future tightening of the regex. Show the proposed key to the user before creating.
 
 7. **Build the payload and create the flag.** Construct a JSON object:
    ```json
@@ -60,7 +60,7 @@ Create a new feature flag in GrowthBook. We always set `{enabled: false}` for ev
 
 - **Feature keys are permanent.** GrowthBook does not let you rename a flag's `id` after creation. Confirm the proposed name with the user before calling the API.
 - **`owner` defaults to the token's user.** Omit `owner` from the create payload — the API attributes the flag to the user the `GB_API_KEY` belongs to. Only set `owner` explicitly (an email or `u_...` userId) if the user wants to assign the flag to someone else.
-- **ID character set: prefer kebab-case.** The v2 endpoint regex still accepts `[a-zA-Z0-9_.:|-]`, but the user-facing docs and error messages recommend `[a-zA-Z0-9_-]`. Don't propose IDs with `.`, `:`, or `|` — they may be tightened in a future version. Existing legacy keys with those characters can be left alone.
+- **ID character set: prefer kebab-case.** The v2 endpoint regex still accepts `[a-zA-Z0-9_.:|-]`, but don't propose IDs with `.`, `:`, or `|` — they may be tightened in a future version. Existing legacy keys with those characters can be left alone.
 - **Always set `{enabled: false}` explicitly per environment.** Don't rely on the org's default-state-for-new-environments setting — it's configurable and may default to enabled. Tell the user the flag is disabled everywhere; silent zero evaluation (or worse, accidentally-enabled evaluation) is a top GrowthBook footgun.
 - **`defaultValue` is always serialized as a string.** `"false"` for boolean off, `"0"` for numeric, JSON-encoded text for `json`. The API rejects non-string values.
 - **v2 environments map is just `{enabled: bool}` per env.** Rules are no longer nested under each environment — they're a top-level array on the flag, added later via `references/flag-targeting.md` (or directly through the v2 revision endpoints). Do not include `rules: []` inside each env.
