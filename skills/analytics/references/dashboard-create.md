@@ -103,8 +103,10 @@ Add exactly one `markdown` block, first in the list, as the legend: one opening 
 One POST with the whole thing. Show the user the payload and get confirmation first — this creates something the whole organization may see.
 
 ```bash
-echo '<dashboard-json>' | gb-call POST /api/v1/dashboards -
+echo '<dashboard-json>' | gb-call POST /api/v2/dashboards -
 ```
+
+Leave `owner` out, as below, and the dashboard belongs to whoever the API key belongs to. Add `"owner": "<email or userId>"` only when the user names someone else to own it, and pass exactly what they gave you. That has to be an email or a `u_...` id. If they gave only a name ("make Priya the owner"), ask for her email before creating. A name is rejected, and don't guess an email from it.
 
 ```json
 {
@@ -143,11 +145,15 @@ echo '<dashboard-json>' | gb-call POST /api/v1/dashboards -
 }
 ```
 
+A 400 saying the request must specify an `owner` means the API key is an organization secret key, which has no user to default to. Ask the user who should own the dashboard, then send the same payload with that `owner` added.
+
 The response is `{ "dashboard": { "id": "dash_...", ... } }`. Report what is on the dashboard in a sentence, plus any assumption you made, and link it at `/product-analytics/dashboards/<id>`.
 
 ## Block reference
 
-**Required top-level fields:** `title`, `editLevel`, `shareLevel`, `enableAutoUpdates`, `blocks`. `projects`, `globalControls`, and `comparison` are optional. Omit `experimentId` — a general dashboard has none, and setting it makes an experiment dashboard instead.
+**Required top-level fields:** `title`, `editLevel`, `shareLevel`, `enableAutoUpdates`, `blocks`. `projects`, `globalControls`, `comparison`, and `owner` are optional.
+
+- `owner` — a userId (`u_...`) or the email of an organization member. Omit it for the caller. A display name, an email that matches no member, and `""` are all rejected. Omit `experimentId` — a general dashboard has none, and setting it makes an experiment dashboard instead.
 
 - `editLevel` — `"private"` (only you can edit) or `"published"` (members with permission can). Default to `"private"`.
 - `shareLevel` — same two values, for viewing. Default to `"private"`; the user can publish it afterwards.
@@ -298,6 +304,8 @@ Ask only where the answer changes a block. Everywhere else, build something reas
 
 ## Guardrails
 
+- **Create on `/api/v2/dashboards`, never `/api/v1/dashboards`.** The v1 create is deprecated and ignores `owner`. With a secret key it saves a dashboard that has no owner at all.
+- **`owner` is the user's call, never yours.** Leave it out unless the user named someone else, and never fill it with the current user's email or a guess. When the API asks for one, ask the user. The new owner must be a member who can manage the dashboard, and a private dashboard is visible only to its owner, so say who will be able to see it when you set someone else.
 - **One POST per dashboard.** Every block goes in the create call; the server runs each chart. Do not POST explorations first, and do not create the dashboard and then add tiles to it.
 - **Say what the dashboard will contain, then get a yes.** A dashboard is organization-visible configuration, and the payload is unreadable at a glance. Lead with the name and where it lands, then one bullet per tile — chart type, metric, timeframe — in the words the user would use. Someone who never opens the JSON should be able to tell you got it wrong.
 - **`explorerAnalysisId` is the server's to fill.** Omit it on every chart block you have not run yourself.
@@ -315,7 +323,7 @@ Ask only where the answer changes a block. Everywhere else, build something reas
 - `GET /api/v1/projects` — settle which project the dashboard belongs to
 - `GET /api/v1/fact-metrics` — find chartable metrics
 - `GET /api/v1/fact-tables` and `GET /api/v1/fact-tables/:id` — fact tables, columns, `userIdTypes`, `topValues`
-- `POST /api/v1/dashboards` — create the dashboard
+- `POST /api/v2/dashboards` — create the dashboard, with an optional `owner`
 
 ## Handoffs
 
