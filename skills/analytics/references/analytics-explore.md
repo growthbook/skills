@@ -312,7 +312,7 @@ Maximum 2 dimensions total (the date dimension counts); with more than one `valu
 
 **Row filters.** Shape: `{ "operator", "column", "values": ["..."] }` per filter, ANDed together. Operators: `=`, `!=`, `<`, `<=`, `>`, `>=`, `in`, `not_in`, `contains`, `not_contains`, `starts_with`, `ends_with`, `is_null`, `not_null`, `is_true`, `is_false`. Null/boolean operators take no `values`. Never guess a filter value—call `POST /api/v1/product-analytics/column-values` first.
 
-**`showAs`.** Optional top-level toggle between raw totals (`"total"`) and per-unit averages (`"per_unit"`). Omit it in almost all cases — the chart infers a sensible default. Set it only when the user clearly asks for one view ("per user" → `per_unit`; "total X" → `total`), and only when at least one value is a `mean` metric — it has no effect on fact-table/data-source datasets or on proportion/retention/ratio/quantile metrics.
+**`showAs`.** Optional field on each metric `dataset.values[]` entry that toggles between raw totals (`"total"`) and per-unit averages (`"per_unit"`). Omit it in almost all cases — each value infers a sensible default. Set it only when the user clearly asks for one view ("per user" → `per_unit`; "total X" → `total`), and only on a `mean` metric value — it has no effect on fact-table/data-source datasets or on proportion/retention/ratio/quantile metrics. Never send the top-level `showAs` on the config; it is deprecated.
 
 ## Guardrails
 
