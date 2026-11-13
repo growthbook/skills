@@ -171,7 +171,7 @@ involved joins across multiple tables), present the SQL results as text only.
 
 ## Guardrails
 
-- **Read-only SQL only.** The endpoint rejects any query that isn't a SELECT or WITH statement. DML (INSERT, UPDATE, DELETE), DDL (CREATE, DROP, ALTER), and escape hatches (INTO OUTFILE, COPY TO, pg_read_file, etc.) are blocked.
+- **Read-only SQL only.** The endpoint rejects any query that isn't a SELECT or WITH statement. DML (INSERT, UPDATE, DELETE), DDL (CREATE, DROP, ALTER), `INTO` anywhere in the query (`SELECT ... INTO`), dollar-quoted strings (`$$...$$`), and escape hatches (INTO OUTFILE, COPY TO, pg_read_file, etc.) are blocked. Write string literals with single quotes.
 - **500-row hard limit.** The server enforces `LIMIT 500` regardless of what you write. If your result hits 500, tell the user the data is truncated and suggest re-aggregating at a coarser grain.
 - **Preview before filtering.** Never guess column values for WHERE clauses. Always call `preview-values` first to see actual values, spellings, and formats.
 - **One query at a time.** Multi-statement queries (semicolons between statements) are rejected.
