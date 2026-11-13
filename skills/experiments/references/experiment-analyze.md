@@ -45,6 +45,7 @@ Fetch results, refresh the snapshot only when the cached data is over 24 hours o
 
    - `id` — the snapshot ID; used in step 3 if a refresh is needed.
    - `dateUpdated` — ISO timestamp of when this snapshot was created. Drives the staleness check in step 2.
+   - `health` — the data-quality verdicts step 4 reads: `srm`, `multipleExposures`, `unknownVariations`, `power`, `covariateImbalance`, and `cluster` (cluster experiments only). `srm` and `multipleExposures` carry a `status` of `healthy`, `unhealthy`, or `not-enough-traffic`. A check is `null` when the snapshot has no data for it, as on some dimension breakdowns.
    - The per-variation metric data itself (lift estimates, intervals, sample sizes) — what step 4 interprets.
 
    If the response errors with `"No results found for that experiment"`, the experiment has been started but no snapshot exists yet (the auto-refresh hasn't run, or you've filtered to a phase/dimension that's never been snapshotted). Skip step 2 and jump straight to step 3.
@@ -98,14 +99,14 @@ Fetch results, refresh the snapshot only when the cached data is over 24 hours o
 
    **Data-quality checks (in order):**
 
-   - **SRM (Sample Ratio Mismatch).** Observed traffic split vs. configured split. Failure invalidates downstream results — say so prominently and stop interpreting until the user understands the bias risk. Common causes: bot traffic, ad-blockers blocking client-side tracking, mid-experiment targeting changes, activation-metric bias.
-   - **Multiple Exposures.** Users assigned to more than one variation. A small rate (<1%) is usually fine; a high rate suggests sticky bucketing isn't configured or the hash attribute isn't stable.
+   - **SRM (Sample Ratio Mismatch).** Observed traffic split vs. configured split. Read `result.health.srm`: `status` is `unhealthy` when `pValue` is below `threshold`. Where it disagrees with the per-row `results[].checks.srm`, rely on `health.srm`. Failure invalidates downstream results — say so prominently and stop interpreting until the user understands the bias risk. Common causes: bot traffic, ad-blockers blocking client-side tracking, mid-experiment targeting changes, activation-metric bias.
+   - **Multiple Exposures.** Users assigned to more than one variation. Read `result.health.multipleExposures` (`count`, `percent` as a fraction from 0 to 1, `status`). A small rate (<1%) is usually fine; a high rate suggests sticky bucketing isn't configured or the hash attribute isn't stable.
    - **Minimum Data Thresholds.** Per-metric minimums (configured per metric). If a metric is below its threshold, results for that metric are not trustworthy yet.
-   - **Variation ID Mismatch.** Variation IDs reported by exposures don't match the experiment's configured variations. Indicates a tracking/configuration bug.
+   - **Variation ID Mismatch.** Variation IDs reported by exposures don't match the experiment's configured variations. A non-empty `result.health.unknownVariations` lists them. Indicates a tracking/configuration bug.
    - **Suspicious Uplift.** Per-metric lift exceeds configured suspicious thresholds. Doesn't mean the result is wrong, but real lifts that large are rare — usually a tracking or metric-definition issue.
    - **Guardrails.** Listed under data-quality in the docs because a failing guardrail is a hard stop on shipping. For each: any regression? Even a non-significant regression on a guardrail is worth flagging. Note: multiple-comparison correction is **not** applied to guardrails by design.
 
-   **Power check.** Is the experiment at or near the expected sample size? If well under (e.g., <50% of planned), warn that conclusions are speculative — especially on the frequentist engine, where peeking inflates false-positive rates more aggressively. Bayesian results are more robust to peeking but still benefit from the planned sample size.
+   **Power check.** `result.health.power` gives `isLowPowered` and `additionalDaysNeeded` (`null` when the experiment isn't expected to reach its target power at current traffic); the whole object is `null` when the snapshot has no estimate. Is the experiment at or near the expected sample size? If well under (e.g., <50% of planned), warn that conclusions are speculative — especially on the frequentist engine, where peeking inflates false-positive rates more aggressively. Bayesian results are more robust to peeking but still benefit from the planned sample size.
 
    **Primary metric — branch on stats engine:**
 
@@ -187,7 +188,7 @@ Fetch results, refresh the snapshot only when the cached data is over 24 hours o
 ## Endpoints used
 
 - `GET /api/v1/experiments?q=<text>` — resolve an experiment ID when the user only gave a name or keyword. `q` matches name, tracking key, description, and hypothesis; pair with `sortBy=dateUpdated&sortOrder=desc` so active experiments surface first.
-- `GET /api/v1/experiments/<id>/results` — primary entry point; returns `{ experiment, result }` so step 1 grabs metadata, status, and the snapshot timestamp (`result.dateUpdated`) in a single call. Accepts `phase` / `dimension` query params.
+- `GET /api/v1/experiments/<id>/results` — primary entry point; returns `{ experiment, result }` so step 1 grabs metadata, status, the snapshot timestamp (`result.dateUpdated`), and the data-quality verdicts (`result.health`) in a single call. Accepts `phase` / `dimension` query params.
 - `POST /api/v1/experiments/<id>/snapshot` — trigger a fresh snapshot when results are over 24h old or the user wants a phase/dimension cut the cached snapshot doesn't cover. Body accepts `phase` (integer) and `dimension` (string).
 - `GET /api/v1/snapshots/<snapshot-id>` — poll for snapshot completion (5s interval, 60 iteration cap). Returns `{ snapshot: { id, experiment, status } }`.
 
