@@ -172,7 +172,13 @@ The fact table must belong to the exploration's datasource.
 gb-call GET /api/v1/data-sources/<ds_id>/information-schema
 ```
 
-Returns `databases[].schemas[].tables[]`, each table with `tableName`, `path` (fully qualified, e.g. `db.schema.events`), `id`, and `numOfColumns`. If no information schema exists yet, the user must generate one in the GrowthBook UI first (Product Analytics → Data Source explorer) — there is no API call to trigger it.
+Returns `databases[].schemas[].tables[]`, each table with `tableName`, `path` (fully qualified, e.g. `db.schema.events`), `id`, and `numOfColumns`. If the call fails with `No information schema found for this data source`, queue one and repeat the GET until `status` is `COMPLETE`, then check `error`. Creating one needs permission to edit the data source's settings.
+
+```bash
+gb-call POST /api/v1/data-sources/<ds_id>/information-schema/refresh
+```
+
+Returns `{"queued": true}` and builds the schema in the background. Run the same call to re-read the warehouse's tables.
 
 **C-2. Get the columns.**
 
@@ -346,6 +352,7 @@ Maximum 2 dimensions total (the date dimension counts); with more than one `valu
 - `GET /api/v1/fact-metrics/:id` — resolve a selected metric's full definition when per-unit semantics require its fact table
 - `GET /api/v1/fact-tables/:id` — resolve valid identifier types for a user-requested per-unit mean
 - `GET /api/v1/data-sources/:id/information-schema` — browse warehouse databases/schemas/tables
+- `POST /api/v1/data-sources/:id/information-schema/refresh` — queue creation or refresh of the information schema
 - `GET /api/v1/information-schema-tables/:tableId` — raw table columns + datatypes
 - `POST /api/v1/product-analytics/metric-exploration` — run a metric chart
 - `POST /api/v1/product-analytics/fact-table-exploration` — run a fact-table chart
