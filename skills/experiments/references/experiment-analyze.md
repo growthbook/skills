@@ -5,197 +5,133 @@ description: Fetch results for a GrowthBook experiment, refresh the snapshot onl
 
 # experiment-analyze
 
-Fetch results, refresh the snapshot only when the cached data is over 24 hours old or the user wants a different phase/dimension cut, then interpret. This skill is the heaviest in the catalog because of the conditional polling loop and the statistical interpretation — slow down and do each step deliberately.
+Report where an experiment stands and what its results show. One call returns both GrowthBook's own status and decision for the experiment and the metric results behind them. Lead with the status and decision, then give as much metric detail as the question asks for. Read-only: this workflow may refresh a stale snapshot, but it never stops or modifies the experiment.
 
 ## Contents
 
 - Workflow
+  - 1. Fetch the experiment and its results
+  - 2. Refresh only when needed
+  - 3. Answer the question that was asked (status questions, results questions)
+  - 4. Suggest the next step (from the decision, or your own read when there is none)
 - Guardrails
 - Endpoints used
 - Handoffs
 
 ## Workflow
 
-1. **Fetch results + experiment metadata in one call.** `/results` returns `{ experiment, result }` — the same payload that powers the GrowthBook UI's results view, so there's no need for a separate metadata call.
+1. **Fetch the experiment and its results.**
 
-   If the user gave a name instead of an ID ("the checkout test"), resolve it first — `q` matches against name, tracking key, description, and hypothesis:
+   If the user gave a name instead of an ID, resolve it first. `q` matches name, tracking key, description, and hypothesis:
 
    ```bash
    gb-call GET '/api/v1/experiments?q=checkout&sortBy=dateUpdated&sortOrder=desc&limit=10'
    ```
 
-   If more than one experiment plausibly matches, list the candidates and let the user pick — don't guess.
+   If more than one experiment plausibly matches, list the candidates and let the user pick.
 
    ```bash
    gb-call GET /api/v1/experiments/<experiment-id>/results
-   # or, when the user asks for a specific phase / dimension cut:
+   # a specific phase or dimension cut:
    gb-call GET '/api/v1/experiments/<experiment-id>/results?phase=1&dimension=exp:country'
    ```
 
-   The `phase` and `dimension` query params filter to the latest snapshot taken with those settings; omit both for the default "how is it doing" view.
+   The response is `{ experiment, result }`. The rest of the workflow reads three things from it:
 
-   From `experiment`, capture:
+   - `experiment.enhancedStatus` — GrowthBook's own read of the experiment: `status`, `detailedStatus`, `needsAttention`, and `decision` (`category`, `status`, `reason`, and where they apply `variations`, `daysLeft`, `healthIssues`, `erroredMetricIds`). The whole object is omitted for holdouts, when `phase` is not the latest phase, and on self-hosted versions that predate it. `decision` alone is omitted for stopped experiments and whenever GrowthBook has no verdict, which is the normal state of a healthy running experiment in an organization that doesn't use the Experiment Decision Framework.
+   - `experiment.settings` — `statsEngine`, plus `goals`, `secondaryMetrics`, and `guardrails`, each a list of `{ metricId }` that tells you a metric's role.
+   - `result` — `dateUpdated` (when the snapshot was taken), `health` (data-quality checks such as `srm` and `multipleExposures`, already judged against the organization's thresholds), and `results[]`, with one entry per dimension value or a single entry when there is no dimension. Each metric's numbers are in `metrics[].variations[].analyses[0]`: `percentChange` (relative lift as a fraction, so `0.05` is +5%), `ciLow`, `ciHigh`, and `chanceToBeatControl` on Bayesian or `pValue` on frequentist. The field for the other engine comes back as `0`; ignore it. An `errorMessage` means the metric could not be computed and its numbers are placeholders. Older self-hosted versions return no `health`; the only health signal there is the SRM p-value in `results[].checks.srm`.
 
-   - `status` — `running` or `stopped` both make sense for analysis. If `draft`, there are no results to interpret; tell the user.
-   - `type` — if `"multi-armed-bandit"`, halt and tell the user this skill targets standard A/B tests. Bandits report differently (per-arm probabilities, dynamic traffic allocation) and shouldn't be read with the standard winner/loser framing.
-   - `settings.statsEngine` — `"bayesian"` (default) or `"frequentist"`. Drives the metric-interpretation step below.
-   - `regressionAdjustmentEnabled` (CUPED) and `sequentialTestingEnabled` — affect what to report.
+   Stop here in two cases. If `experiment.status` is `draft`, there are no results; say so. If `experiment.type` is `multi-armed-bandit`, say this workflow covers standard experiments and point the user to the GrowthBook UI.
 
-   From `result`, capture:
+   If the call fails with `"No results found for that experiment"`, no snapshot exists yet for that phase or dimension. Go to step 2 and create one.
 
-   - `id` — the snapshot ID; used in step 3 if a refresh is needed.
-   - `dateUpdated` — ISO timestamp of when this snapshot was created. Drives the staleness check in step 2.
-   - `health` — the data-quality verdicts step 4 reads: `srm`, `multipleExposures`, `unknownVariations`, `power`, `covariateImbalance`, and `cluster` (cluster experiments only). `srm` and `multipleExposures` carry a `status` of `healthy`, `unhealthy`, or `not-enough-traffic`. A check is `null` when the snapshot has no data for it, as on some dimension breakdowns.
-   - The per-variation metric data itself (lift estimates, intervals, sample sizes) — what step 4 interprets.
-
-   If the response errors with `"No results found for that experiment"`, the experiment has been started but no snapshot exists yet (the auto-refresh hasn't run, or you've filtered to a phase/dimension that's never been snapshotted). Skip step 2 and jump straight to step 3.
-
-2. **Decide whether to refresh.** Branch on `result.dateUpdated`:
-
-   - **Under 24 hours old, and the existing snapshot matches the user's requested phase/dimension** → skip step 3, jump to step 4.
-   - **Over 24 hours old, or the user explicitly asked for a fresh snapshot** → step 3.
-
-   The server auto-refreshes snapshots every 6 hours by default (`EXPERIMENT_REFRESH_FREQUENCY`), so anything under 24 hours has typically been refreshed at least once recently. The 24-hour bar is deliberately conservative — don't burn snapshot-compute budget on data that hasn't moved.
-
-3. **Trigger a fresh snapshot, poll, then re-fetch results.**
-
-   **3a. POST a snapshot.** Optional body fields shape what gets computed; pass the same `phase` / `dimension` the user asked for in step 1:
-
-   - `phase` (integer, 0-indexed): pick a specific phase if the experiment has multiple — e.g., re-analyze the pre-ramp phase after the experiment has ramped up. Defaults to the latest phase.
-   - `dimension` (string): break the results down. Built-in: `"pre:date"`, `"pre:activation"`. For a configured Unit Dimension, use its ID (e.g. `"dim_abc123"`). For an Experiment Dimension, prefix with `"exp:"` (e.g. `"exp:country"`).
+2. **Refresh only when needed.** Skip this step unless `result.dateUpdated` is more than 24 hours old, the user asked for fresh data, or step 1 found no snapshot. The server refreshes on its own schedule (every 6 hours by default) and each refresh runs warehouse queries, so don't spend one on data that hasn't moved.
 
    ```bash
    echo '{}' | gb-call POST /api/v1/experiments/<experiment-id>/snapshot -
-   # or with phase + dimension:
+   # with a phase (0-indexed) and a dimension:
    echo '{"phase": 1, "dimension": "exp:country"}' \
      | gb-call POST /api/v1/experiments/<experiment-id>/snapshot -
    ```
 
-   The response is `{ snapshot: { id, experiment, status } }`. Capture `snapshot.id`.
-
-   If the experiment is `stopped` and the organization has disabled updating results for stopped experiments, the POST returns `422` with a `warnings` array. Skip 3b and 3c and tell the user the results are frozen by an organization setting. If step 1 returned a result, report it with its `dateUpdated`. Otherwise, stop and explain that no saved result exists for the requested phase/dimension and the current setting prevents creating one. Do not resend with `ignoreWarnings`.
-
-   **3b. Poll for completion.** Snapshot creation is asynchronous:
+   `dimension` takes `pre:date`, `pre:activation`, a Unit Dimension id (`dim_abc123`), or an Experiment Dimension as `exp:<name>`. The response is `{ snapshot: { id, experiment, status } }`. Poll it, at most 60 times:
 
    ```bash
    for i in $(seq 1 60); do
      gb-call GET /api/v1/snapshots/<snapshot-id>
-     # Parse snapshot.status. Stop when it is "success" or "error".
+     # stop when snapshot.status is "success" or "error"
      sleep 5
    done
    ```
 
-   Cap the loop at 60 iterations (5 minutes). If it hasn't finished by then, stop polling and tell the user the snapshot is still in progress — they can retry the skill in a few minutes. Don't loop forever.
+   On `success`, repeat the step 1 `/results` call with the same `phase` and `dimension`. On `error`, or if the snapshot is still running after 60 polls, tell the user and report whatever step 1 returned, with its `dateUpdated`.
 
-   **3c. Re-fetch results** with the same phase/dimension args used in 3a, then re-capture the fields listed in step 1:
+   If the POST returns `422` with a `warnings` array, the experiment is stopped and the organization has frozen results for stopped experiments. Do not retry with `ignoreWarnings`. Report the step 1 result if there was one. Otherwise say that no saved result exists for that phase or dimension and the setting prevents creating one.
 
-   ```bash
-   gb-call GET '/api/v1/experiments/<experiment-id>/results'
-   # or, if 3a passed phase/dimension:
-   gb-call GET '/api/v1/experiments/<experiment-id>/results?phase=1&dimension=exp:country'
-   ```
+3. **Answer the question that was asked.** Every answer opens with the status and decision, because they are GrowthBook's own conclusion, reached with the organization's thresholds and decision criteria. Quote `detailedStatus` and `decision.reason` rather than re-deriving them from the metrics.
 
-4. **Run the data-quality checks first, then interpret.** GrowthBook surfaces six health checks; any failing one changes how the result should be read. Surface failures prominently — don't bury them.
-
-   **Data-quality checks (in order):**
-
-   - **SRM (Sample Ratio Mismatch).** Observed traffic split vs. configured split. Read `result.health.srm`: `status` is `unhealthy` when `pValue` is below `threshold`. Where it disagrees with the per-row `results[].checks.srm`, rely on `health.srm`. Failure invalidates downstream results — say so prominently and stop interpreting until the user understands the bias risk. Common causes: bot traffic, ad-blockers blocking client-side tracking, mid-experiment targeting changes, activation-metric bias.
-   - **Multiple Exposures.** Users assigned to more than one variation. Read `result.health.multipleExposures` (`count`, `percent` as a fraction from 0 to 1, `status`). A small rate (<1%) is usually fine; a high rate suggests sticky bucketing isn't configured or the hash attribute isn't stable.
-   - **Minimum Data Thresholds.** Per-metric minimums (configured per metric). If a metric is below its threshold, results for that metric are not trustworthy yet.
-   - **Variation ID Mismatch.** Variation IDs reported by exposures don't match the experiment's configured variations. A non-empty `result.health.unknownVariations` lists them. Indicates a tracking/configuration bug.
-   - **Suspicious Uplift.** Per-metric lift exceeds configured suspicious thresholds. Doesn't mean the result is wrong, but real lifts that large are rare — usually a tracking or metric-definition issue.
-   - **Guardrails.** Listed under data-quality in the docs because a failing guardrail is a hard stop on shipping. For each: any regression? Even a non-significant regression on a guardrail is worth flagging. Note: multiple-comparison correction is **not** applied to guardrails by design.
-
-   **Power check.** `result.health.power` gives `isLowPowered` and `additionalDaysNeeded` (`null` when the experiment isn't expected to reach its target power at current traffic); the whole object is `null` when the snapshot has no estimate. Is the experiment at or near the expected sample size? If well under (e.g., <50% of planned), warn that conclusions are speculative — especially on the frequentist engine, where peeking inflates false-positive rates more aggressively. Bayesian results are more robust to peeking but still benefit from the planned sample size.
-
-   **Primary metric — branch on stats engine:**
-
-   - **Bayesian (`settings.statsEngine === "bayesian"`, the default):** Report **Chance to Win** (the probability the treatment beats the control given the data and prior) and the relative-uplift distribution (point estimate + Credible Interval). GrowthBook treats >95% Chance to Win as a strong positive signal; <5% as a strong negative; the rest is inconclusive. Don't fabricate a p-value.
-   - **Frequentist (`settings.statsEngine === "frequentist"`):** Report the lift point estimate, 95% confidence interval, and whether the CI crosses zero. If `regressionAdjustmentEnabled` is true (CUPED), point-estimates may differ from raw means; CIs are typically narrower. If `sequentialTestingEnabled` is true, CIs are intentionally wider to make peeking safe — call this out so the user doesn't compare them to non-sequential CIs.
-
-   **Secondary metrics.** Surface but caveat — these are exploratory; multiple-comparison risk applies on the frequentist engine (GrowthBook only applies the correction there; on Bayesian, the implicit correction comes from the prior). Don't promote a secondary to "we won on X" if the primary didn't move.
-
-   **Dimensions (if user asks).** If the snapshot was taken with a `dimension`, the results endpoint returns the per-dimension cuts. Surface notable splits but don't fish — dimensional analysis multiplies the comparison count.
-
-5. **Present the result.** Use this shape (skip rows that don't apply):
+   **Status questions** ask where the experiment stands: its state, progress, health, or whether it is ready to stop or ship. Keep the answer short:
 
    ```
-   ## Experiment: <name> (<id>)
-   - Status: <running|stopped>
-   - Type: <standard|multi-armed-bandit>
-   - Stats engine: <bayesian|frequentist>
-   - Adjustments: <CUPED on/off, sequential testing on/off>
-   - Phase: <phase name or index>
-   - Dimension: <none | dimension id used>
-   - Sample size: <total users> across N variations
-   - Snapshot timestamp: <when this snapshot ran>
-
-   ### Data-quality checks
-   - SRM: <pass / fail with detail>
-   - Multiple Exposures: <pass / rate>
-   - Minimum Data Thresholds: <met / not met, per metric>
-   - Variation ID Mismatch: <pass / fail>
-   - Suspicious Uplift: <none / per-metric flags>
-
-   ### Primary metric: <name>
-   - Variation 0 (Control): <baseline value>
-   - Variation 1 (Treatment): <value>
-   - **Bayesian:** Chance to Win <X%>, relative lift <±Y%>, 95% CrI [a, b]
-   - **Frequentist:** lift <±Y%>, 95% CI [a, b]<note if CIs are sequential>
-   - Verdict: <won / lost / inconclusive>
-
-   ### Guardrails
-   - <metric>: <safe / regressed by Y%>
-
-   ### Secondary metrics
-   - <metric>: <lift / no movement> <multiple-comparison caveat if frequentist>
-
-   ### Recommendation
-   <one paragraph: ship, kill, extend, or investigate>
+   <name>: <enhancedStatus.status>, <detailedStatus><, needs attention — when needsAttention is true>
+   <decision.reason>
+   Metrics (snapshot <dateUpdated>):
+   - <metric>, <variation>: <lift>, <interval>, <chance to win | p-value>
+   View in GrowthBook: /experiment/<id>
    ```
 
-6. **Link to the experiment, then suggest the next step.** Always surface the direct UI link so the user can review the live results, dimensional cuts, and historical snapshots beyond what `/results` returns:
+   Which metrics to show is your call. Start from the goal metrics and add anything notable among the secondary and guardrail metrics, such as a guardrail moving the wrong way or a large secondary effect. Bring in `result.health` only when `decision.category` is `has-issue`, and then give the numbers for the checks named in `decision.healthIssues`.
 
-   ```
-   View in GrowthBook: /experiment/<exp_id>
-   ```
+   **Results questions** ask for the numbers themselves: overall results, a named metric, secondary or guardrail metrics, a dimension, or an earlier phase. Open with the same status and decision lines, then:
 
-   Then suggest a next action based on `experiment.status` from step 1:
+   - Report every metric asked about, grouped by role (goal, secondary, guardrail), one line per variation in the format above.
+   - Read the metrics against the decision. If they seem to disagree (a goal metric looks significant while the decision is `collecting-data`, or looks flat under `ship-now`), say the decision stands and quote its `reason`. Don't guess which metric drove it.
+   - For a dimension, give one block per dimension value. The decision describes the whole experiment, so present it as context and don't apply it to a slice.
+   - Say when `settings.sequentialTestingEnabled` is on. Sequential testing widens the intervals on purpose but allows early stopping without inflating false positive rates.
 
-   - `running` and conclusive → suggest `references/experiment-stop.md` with the chosen variation.
-   - `running` and inconclusive → suggest waiting or extending.
-   - `stopped` → point at flag cleanup via the **feature-flags** skill (`flag-targeting` workflow) to update or remove the `experiment-ref` rule on the linked flag.
+   **In either answer:**
+
+   - When there is no `enhancedStatus` or no `decision` (a holdout, an earlier phase, a stopped experiment, or an organization without the Decision Framework), say that GrowthBook returned no decision. Report the metrics on their own, with the `result.health` checks in place of the decision.
+   - If you single out a finding from many metrics, variations, or dimension values, say that it is more likely to be chance. Nothing the API returns is adjusted for multiple comparisons.
+
+4. **Suggest the next step.** This is the only place the workflow recommends an action. When GrowthBook returned a `decision`, the recommendation follows `decision.category` and not a metric that looks significant:
+
+   - `ready-for-action` — on `ship-now` or `rollback-now`, offer `references/experiment-stop.md`. For `ship-now`, `decision.variations` lists the variations to ship; pass that `variationId`, and let the user pick if there are several. On `ready-for-review` or `scheduled-end-review`, lay out the tradeoff and ask the user what they want to do.
+   - `has-issue` — don't recommend shipping. Quote `reason`.
+   - `collecting-data` — GrowthBook says to wait. Keep it running and don't propose a stop. If the user wants to stop anyway, hand off to `references/experiment-stop.md` and say GrowthBook isn't recommending it.
+
+   A stopped experiment has no `decision` and needs no recommendation. If its `detailedStatus` is `Awaiting decision`, say that it stopped without a recorded result.
+
+   **A running experiment with no `decision`** means GrowthBook has no verdict, which is different from telling you to wait. Give your own read, and say plainly that it is yours and not GrowthBook's. Base it on the overall results of the latest phase; a dimension cut or an earlier phase can't support one.
+
+   - **Health first.** Use the `result.health` statuses. Where `health` is missing, use the SRM p-value in `results[].checks.srm`, which GrowthBook flags below 0.001 by default. If a check is failing, stop there: the read is to fix that first.
+   - **Evidence.** Summarize the goal metrics by direction and by whether the interval excludes zero. Name any guardrail moving the wrong way.
+   - **Reasons to wait.** `result.health.power` reporting `isLowPowered` or a positive `additionalDaysNeeded`, less than a full week since `result.dateStart`, or frequentist results without sequential testing, where looking early inflates false positives.
+   - **Leaning.** Close with one of ship, roll back, keep running, or unclear, and the reasons for it. The call is the user's. Hand off to `references/experiment-stop.md` only if they choose to stop.
 
 ## Guardrails
 
-- **All six data-quality checks come before interpretation.** SRM, Multiple Exposures, Minimum Data Thresholds, Variation ID Mismatch, Suspicious Uplift, and Guardrails. A failure in any of them changes how (or whether) to interpret the result. Don't bury them under the primary-metric heading.
-- **Branch interpretation on `settings.statsEngine`.** Bayesian (default) reports Chance to Win + Credible Intervals; frequentist reports lift + Confidence Intervals. Don't manufacture a p-value the API didn't return, and don't claim "95% CI" on a Bayesian result (it's a Credible Interval, not a Confidence Interval).
-- **Multiple-comparison correction is frequentist-only and excludes guardrails.** When reporting secondaries, note the correction status. On Bayesian, the prior provides implicit shrinkage; no correction is applied.
-- **CUPED and sequential testing change how to read CIs.** If `regressionAdjustmentEnabled` is true, point estimates may differ from raw means and CIs are typically narrower. If `sequentialTestingEnabled` is true, CIs are intentionally wider — say so, so the user doesn't compare them apples-to-oranges with non-sequential results.
-- **Don't peek-and-decide.** Under-powered experiments mean interim numbers are noisy. Frequentist peeking inflates false-positive rates; Bayesian is more robust but still benefits from hitting the planned sample size.
-- **Bandits are out of scope.** `type === "multi-armed-bandit"` reports per-arm probabilities and dynamically reallocates traffic. Halt and tell the user to read bandit results in the UI.
-- **Activation-metric bias hides as "passing SRM."** If the experiment uses an activation metric that is downstream of variation differences (e.g., "completed signup" when variations affect signup completion), the overall split can look fine while the activated cohort is biased. The dashboard surfaces this; flag it when you spot the pattern in metadata.
-- **Don't promote a secondary to a primary.** If the primary didn't move, the experiment didn't move — secondaries are exploratory.
-- **Never send `ignoreWarnings` on the snapshot request unless the user explicitly asks.** It overrides the organization's setting that freezes results for stopped experiments. A `422` there is a decision for a person, not a retry condition.
-- **Polling has a ceiling.** 60 iterations × 5s = 5 minutes. If the snapshot isn't done by then, stop and report. Don't run for hours.
-- **Snapshot timestamp matters.** Always surface `result.dateUpdated` when reporting results — it's both how step 2 decides whether to refresh and how the user judges whether a slow-traffic experiment has moved. Stale snapshots are common; don't hide them.
-- **24h is a deliberate ceiling, not the auto-refresh cadence.** The server auto-refreshes every 6h by default, so a snapshot under 24h has almost always been refreshed at least once. The skill's 24h bar gives the user a useful conservative window without paying snapshot compute on data that hasn't moved. Don't drop it to "any data older than a minute" — that's how you pin a busy org against the 60 rpm limit.
-- **Rate limit awareness.** Happy path is a single `/results` call. Worst case (no snapshot or stale + 60-iteration poll + re-fetch) is ~63 calls spread over 5 minutes (~13/min), well under 60 rpm. If multiple users invoke this concurrently in the same org the limit can still bite — surface clearly if `gb-call` returns a 429.
-- **Read-only.** This skill never stops or modifies the experiment. Hand off to `references/experiment-stop.md` when the user wants to act.
-- **`q` rejects negation and operators with a 400.** The list endpoint's `q` param takes the app's search syntax (`status:running tag:checkout` plus free text) but hard-rejects `!`, `~`, `^`, `>`, `<`, `=`. Send plain `field:value` tokens and free text only.
-- **When resolving by name, filter bandits with `bandits`, not `type`.** The response's `type` field (`standard` / `multi-armed-bandit`) is not a list query param; sending `type=` returns a 400. Use `bandits=false` to exclude bandits from the candidates, since this skill halts on them anyway. (`implementationType` is a different axis — the linked-change kind.)
+- **Read-only.** This workflow may POST a snapshot. It never stops or modifies the experiment; hand off to `references/experiment-stop.md` for that.
+- **The next action comes from `needsAttention` and `decision`.** A metric that looks significant is a readout, not a recommendation. `ship-now`, `rollback-now`, and `ready-for-review` appear only when the Experiment Decision Framework is enabled. When a running experiment has no `decision`, give your own read and label it as yours. Never present it as GrowthBook's recommendation, and never name a `decision.status` the API didn't return.
+- **A failing SRM check means the results can't be trusted.** When `result.health.srm.status` is `unhealthy`, say so before any metric.
+- **Match the vocabulary to the engine.** Bayesian (the default) reports Chance to Win and a credible interval. Frequentist reports a p-value and a confidence interval. Don't report a p-value on a Bayesian result.
+- **Nothing the API returns is adjusted for multiple comparisons.** An organization's correction is frequentist-only, covers goal metrics only, and is applied in the UI and CSV exports.
+- **Bandits are out of scope.** `type === "multi-armed-bandit"` reallocates traffic and reports per-arm probabilities. Halt and point the user to the UI.
+- **Never send `ignoreWarnings` on the snapshot request unless the user explicitly asks.** It overrides the organization's setting that freezes results for stopped experiments.
+- **`q` rejects `!`, `~`, `^`, `>`, `<`, `=` with a 400.** Send plain `field:value` tokens and free text. To exclude bandits from the list use `bandits=false`; `type` is not a list param.
+- **Call budget.** The common path is one `/results` call. A refresh adds up to 62 more over five minutes, which stays under the 60 rpm limit. If `gb-call` returns a 429, tell the user.
 
 ## Endpoints used
 
-- `GET /api/v1/experiments?q=<text>` — resolve an experiment ID when the user only gave a name or keyword. `q` matches name, tracking key, description, and hypothesis; pair with `sortBy=dateUpdated&sortOrder=desc` so active experiments surface first.
-- `GET /api/v1/experiments/<id>/results` — primary entry point; returns `{ experiment, result }` so step 1 grabs metadata, status, the snapshot timestamp (`result.dateUpdated`), and the data-quality verdicts (`result.health`) in a single call. Accepts `phase` / `dimension` query params.
-- `POST /api/v1/experiments/<id>/snapshot` — trigger a fresh snapshot when results are over 24h old or the user wants a phase/dimension cut the cached snapshot doesn't cover. Body accepts `phase` (integer) and `dimension` (string).
-- `GET /api/v1/snapshots/<snapshot-id>` — poll for snapshot completion (5s interval, 60 iteration cap). Returns `{ snapshot: { id, experiment, status } }`.
+- `GET /api/v1/experiments?q=<text>` — resolve an experiment ID from a name or keyword.
+- `GET /api/v1/experiments/<id>/results` — returns `{ experiment, result }`: status and decision (`experiment.enhancedStatus`), metric roles (`experiment.settings`), and the snapshot (`result`). Accepts `phase` and `dimension`.
+- `POST /api/v1/experiments/<id>/snapshot` — start a fresh snapshot. Body accepts `phase` (integer) and `dimension` (string).
+- `GET /api/v1/snapshots/<snapshot-id>` — poll snapshot status (`running`, `success`, `error`).
 
 ## Handoffs
 
-- `references/learnings.md` — when a result generalizes beyond one test and has corroborating evidence, offer to record or update a Learning so the conclusion outlives the experiment.
-- `references/experiment-stop.md` — when the user is ready to act on a conclusive result.
-- the **feature-flags** skill (`flag-targeting` workflow) — after stopping with a winner, the linked flag (if any) needs its `experiment-ref` rule updated or removed.
-- `references/experiment-brainstorm.md` — to ground ideas for the next test in results from past experiments.
-- `experiment-statistics` (when shipped) — for deeper questions about CUPED, sequential testing, multiple comparisons, dimensional analysis.
+- `references/experiment-stop.md` — when the decision is `ship-now` or `rollback-now`, or the user chooses to stop.
+- `references/learnings.md` — when a result generalizes beyond one test and has corroborating evidence, offer to record or update a Learning.
+- the **feature-flags** skill (`flag-targeting` workflow) — after stopping with a winner, the linked flag's `experiment-ref` rule needs updating or removing.
+- `references/experiment-brainstorm.md` — to ground ideas for the next test in past results.
