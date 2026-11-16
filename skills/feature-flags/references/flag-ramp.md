@@ -193,6 +193,12 @@ gb-call POST /api/v1/ramp-schedules/<rs-id>/actions/pause
 gb-call POST /api/v1/ramp-schedules/<rs-id>/actions/resume
 ```
 
+**Retry a failed step** (when `stepFailure` is set on the schedule from the list call above):
+```bash
+gb-call POST /api/v1/ramp-schedules/<rs-id>/actions/retry
+```
+When a step fails for a reason that may clear on its own, the schedule holds at its current step and retries on a backoff (5s, 10s, 30s, 1m, then doubling up to 30m), and pauses after 10 failed attempts. `stepFailure` shows `attempts`, `lastError`, and `retryAt`. This call runs the next attempt now. It applies the same hold conditions as the scheduler (use `/actions/advance` to bypass them), and a failed attempt counts toward the limit and returns its error. It returns an error when `stepFailure` is not set.
+
 **Roll back** (restores `startActions` state, marks as `rolled-back`):
 ```bash
 echo '{"reason":"<description>"}' | gb-call POST /api/v1/ramp-schedules/<rs-id>/actions/rollback -
@@ -240,6 +246,7 @@ gb-call POST /api/v1/ramp-schedules/<rs-id>/actions/start
 - `POST /api/v1/ramp-schedules/:id/actions/start`
 - `POST /api/v1/ramp-schedules/:id/actions/pause`
 - `POST /api/v1/ramp-schedules/:id/actions/resume`
+- `POST /api/v1/ramp-schedules/:id/actions/retry`
 - `POST /api/v1/ramp-schedules/:id/actions/advance` (body: optional `{ force: true }`)
 - `POST /api/v1/ramp-schedules/:id/actions/approve-step`
 - `POST /api/v1/ramp-schedules/:id/actions/rollback` (body: `{ reason: string }`)
