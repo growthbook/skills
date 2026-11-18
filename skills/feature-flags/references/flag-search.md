@@ -62,7 +62,7 @@ Common searches:
 
 | Request | Approach |
 | --- | --- |
-| "Flags owned by X" | Fetch all, filter on `owner.email` |
+| "Flags owned by X" | Fetch all, filter on `ownerEmail`; `owner` is the userId, not an email |
 | "Boolean flags" | Fetch all, filter on `valueType === "boolean"` |
 | "Flags enabled in production" | Fetch all, filter on `environmentSettings.production.enabled === true` |
 | "Flags with no rules" | Fetch all, filter on `rules.length === 0` |
