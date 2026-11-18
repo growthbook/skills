@@ -64,6 +64,7 @@ Verified against the back-end handlers; don't collapse these into one another.
   - `completed` → `response` holds the status and body the original request returned. Branch on it exactly as you would on a direct response; it can be an error. Confirming is not a review approval.
   - `rejected` → nothing ran. Relay `note` to the user and stop.
   - `expired` → nothing ran. Resend the request only if the user still wants it; that asks for a new confirmation.
+  - Lost the `confirmation.id` → `gb-call GET '/api/v1/confirmations'` lists the pending holds made by your key, newest first. Match on `summary`. Pass `status=<status>` to list another status.
 
 ## Read-only vs. write
 
