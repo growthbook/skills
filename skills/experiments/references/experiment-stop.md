@@ -125,6 +125,8 @@ Stop a running experiment, optionally declaring a winning variation and ramping 
    - **Option B — Roll back:** the flag's default value already serves the control — just remove the experiment-ref rule via the **feature-flags** skill (`flag-rules` workflow) and the flag returns to its pre-experiment state.
    - **Option C — Full cleanup:** use the **feature-flags** skill (`flag-cleanup` workflow) to inline the value in code and archive/delete the flag.
 
+   **Visual Editor experiment (no linked flag):** the same `enableTemporaryRollout` + `releasedVariationId` payload applies — the SDK keeps serving the released variation's DOM changes to 100% of matching traffic. Without a temporary rollout, a stopped visual experiment drops out of the SDK payload and the page reverts to control on its own; there is no rule to remove. Either way, recommend re-implementing a winning change in the site itself (it renders without flicker and survives redesigns), then turning the rollout off with `modify-temporary-rollout`.
+
 ## Guardrails
 
 - **`winnerVariationId` is a variation ID _string_ (e.g. `var_abc123`), not an integer index, not a name, not the variation's `key`.** Get this wrong and the request 400s or the wrong variation is recorded as the winner.
@@ -134,7 +136,7 @@ Stop a running experiment, optionally declaring a winning variation and ramping 
 - **Don't stop already-stopped experiments.** The API may accept the call but it's effectively a no-op; tell the user it's already done. To change the results metadata on an already-stopped experiment, post again with the new `results` / `winnerVariationId` / `analysis`.
 - **Bandits are out of scope.** `type === "multi-armed-bandit"` experiments need different handling — halt and tell the user.
 - **`releasedVariationId` is required when `enableTemporaryRollout: true`.** The API rejects the combination otherwise. They're usually the same as `winnerVariationId` but don't have to be — e.g., a "lost" result that rolls everyone back to control would set `releasedVariationId: <control variation ID>` with `results: "lost"`.
-- **Always remind about the linked flag.** Stopping the experiment does not remove the `experiment-ref` rule from the linked flag. Without a temporary rollout, the flag keeps routing to a stale experiment until the user cleans the rule up.
+- **Always remind about the linked flag, when there is one.** Visual Editor experiments have none. For flag-linked experiments, stopping does not remove the `experiment-ref` rule from the flag. Without a temporary rollout, the flag keeps routing to a stale experiment until the user cleans the rule up.
 - **`analysis` should explain the decision in plain English (markdown).** Future readers (including future-self) will want context. Don't leave it blank when declaring a winner.
 - **Run `references/experiment-analyze.md` first if the user hasn't.** Stopping based on a glance at the dashboard is a common mistake — interim numbers can flip, and the data-quality checks in `references/experiment-analyze.md` can flag results that look conclusive but aren't.
 - **`q` rejects negation and operators with a 400.** The list endpoint's `q` param takes the app's search syntax (`status:running tag:checkout` plus free text) but hard-rejects `!`, `~`, `^`, `>`, `<`, `=`. Send plain `field:value` tokens and free text only.

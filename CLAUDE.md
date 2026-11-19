@@ -11,7 +11,7 @@ Every API payload, endpoint path, statistical recommendation, lifecycle claim, o
 These live in a local checkout of the GrowthBook monorepo, referred to below as `<growthbook>`. It's typically cloned as a sibling of this repo (i.e. `../growthbook`); if you don't find it there, ask where the checkout lives rather than guessing.
 
 1. **Back-end source code** — `<growthbook>/packages/back-end/src/api/` and `<growthbook>/packages/shared/src/validators/`. The Zod validators here are the final authority on payload shapes, required fields, and accepted enum values. If docs and code disagree, the code wins.
-2. **Docusaurus docs** — `<growthbook>/docs/docs/`. The canonical source for statistical methodology, lifecycle guidance, and "best practices we learned the hard way." Map of where things live:
+2. **Mintlify docs** — `<growthbook>/docs/`. The canonical source for statistical methodology, lifecycle guidance, and "best practices we learned the hard way." Map of where things live:
 
    | Topic | Doc path |
    | --- | --- |
@@ -172,7 +172,11 @@ The "Guardrails" section is where you document things the REST API will not enfo
 - Don't mix `templateId` with `datasourceId`/`assignmentQueryId` (experiment-launch)
 - Multiple-comparison correction is frequentist-only and excludes guardrails (experiment-analyze)
 - Bayesian (default engine) reports Chance to Win + Credible Intervals; frequentist reports CIs. Don't manufacture a p-value (experiment-analyze)
-- `/start` failure body is the canonical source for "what's wrong" — there is no `start-checklist` GET (experiment-launch)
+- `GET /experiments/<id>/start-checklist` is the pre-flight; a refused `/start` is a `409` `checklist_incomplete` whose `gates[]` name each blocker (a pending flag approval is a gate with `type: "approval-required"`, not a separate error); `skipChecklist` never clears `hardBlock` items (experiment-launch)
+- `templateId` is create-only — `POST /experiments/<id>` has no template field, so adopting an existing draft means re-sending the template's datasource, assignment query, and metrics explicitly; sending a different `datasourceId` to a draft that already has one switches the datasource and drops the metrics that aren't on it (experiment-launch)
+- The experiment response nests analysis fields under `settings` — `settings.datasourceId` (`""` when unset), `settings.goals`, `settings.secondaryMetrics`, `settings.guardrails` — there is no top-level `datasource` (experiment-launch)
+- A `2xx` from `ai/edit` with `persist` always carries `saved: true`; mutations the server dropped are named only in `explanation`, so an empty `mutations` with no `css`/`js`/`insert` means nothing changed (experiment-launch)
+- `/api/v1/visual-editor/*` endpoints require a Personal Access Token; an org Secret Key is rejected (experiment-launch)
 - The v2 rule-edit handler **rejects** explicit `type` changes but **auto-flips** `force` ↔ `rollout` based on effective coverage (flag-targeting)
 - `experimentId` and `variations` on an `experiment-ref` rule are API-allowed but skill-gated (warn-and-confirm) because they cause silent drift between the flag rule and the experiment (flag-targeting)
 - A `409` on revision publish means the draft's base is stale; don't auto-rebase, halt and let the user resolve (flag-targeting)
@@ -217,7 +221,7 @@ Yes, workflows reference other domains constantly — `feature-flags` points int
 
 **Sequential handoff — name the sibling skill, in prose.** When the user's *next* job lives in another domain, end your workflow and name where they're going: "the **experiments** skill (`experiment-stop` workflow)". The agent activates that skill and reads that workflow. Use this for every genuine handoff.
 
-**Inline dependency — make the calls yourself.** When another domain's work is a *step inside* your workflow rather than the next job, inline the specific API calls. `experiment-launch` is the model: creating the flag and wiring the experiment-ref rule are steps 4–6 of its own sequence, so it calls `POST /api/v2/features` and `POST /api/v2/features/<id>/revisions/new/rules` directly instead of delegating to `flag-create` and `flag-experiment`. Launching is one atomic job; handing off mid-sequence would lose the state it's carrying and strand the user halfway.
+**Inline dependency — make the calls yourself.** When another domain's work is a *step inside* your workflow rather than the next job, inline the specific API calls. `experiment-launch` is the model: creating the flag and wiring the experiment-ref rule are step 4A of its own sequence, so it calls `POST /api/v2/features` and `POST /api/v2/features/<id>/revisions/new/rules` directly instead of delegating to `flag-create` and `flag-experiment`. Launching is one atomic job; handing off mid-sequence would lose the state it's carrying and strand the user halfway.
 
 **Never read another domain's reference file.** No `../experiments/references/experiment-stop.md`, and no `${CLAUDE_PLUGIN_ROOT}/skills/...` path into a sibling domain. Two reasons:
 
