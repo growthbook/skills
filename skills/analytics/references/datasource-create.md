@@ -28,7 +28,7 @@ Get the warehouse `type` from the user, then every required field for it from th
 | `postgres`, `redshift`, `vertica` | `host`, `port`, `database`, `user`, `password` |
 | `mysql` | `host`, `port`, `database`, `user`, `password` |
 | `mssql` | `server`, `port`, `database`, `user`, `password` |
-| `snowflake` | `account`, `username`, `password`, `database`, `schema` |
+| `snowflake` | `account`, `username`, `database`, `schema`, plus `password` for password auth (the default), `authMethod: "key-pair"` with `privateKey` (and `privateKeyPassword` if the key is encrypted), or `authMethod: "workload-identity"` with `workloadIdentityProvider` (`AWS`, `AZURE`, or `GCP`) |
 | `bigquery` | `defaultProject`, `defaultDataset`, plus `projectId`, `clientEmail`, `privateKey` with `authType: "json"` |
 | `athena` | `region`, `bucketUri`, plus `accessKeyId`, `secretAccessKey` with `authType: "accessKey"` |
 | `presto` | `engine` (`presto` or `trino`), `host`, `port`, `catalog`, `schema` |
@@ -74,7 +74,7 @@ Give the user the data source `id`, `type`, and `name`. Check `assignmentQueries
 
 - **Send only the fields in the table, plus `name`, `description`, and `projectIds`.** The body and every `connection` object are strict: an unknown field, or a field from another warehouse's connection, fails with a 400.
 - **Do not create a Managed Warehouse (`growthbook_clickhouse`), a Google Analytics data source, or an Event Forwarder.** They have no `connection` type, and `eventTracker: "eventForwarder"` is rejected. Direct the user to set them up in the GrowthBook app.
-- **`authType: "auto"` on `bigquery` and `athena`, and `assumeRole` on `athena`, use the server's own AWS or Google identity and work on self-hosted only.** On Cloud, use `json` or `accessKey` with the user's credentials.
+- **`authType: "auto"` on `bigquery` and `athena`, `assumeRole` on `athena`, and `authMethod: "workload-identity"` on `snowflake` use the server's own AWS, Google, or Azure identity and work on self-hosted only.** On Cloud, use `json`, `accessKey`, or Snowflake `password` or `key-pair` auth with the user's credentials.
 - **Do not send the ClickHouse `caCertPath`, `clientCertPath`, `clientKeyPath`, or `clientCertChainPath` fields.** They read files on the GrowthBook server, so they apply to self-hosted installs only. Use `caCert`, `clientCert`, and `clientKey` with the PEM contents.
 - **A data source can be created even when an assignment query fails validation.** The failure is stored in that query's `error` field instead of rejecting the request.
 - **A held request keeps `connection` encrypted.** The confirmation page shows the connection's non-secret fields to the approver, so tell the user which data source they are approving. Never resend a held request.
