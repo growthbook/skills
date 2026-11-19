@@ -1,6 +1,6 @@
 ---
 name: analytics
-description: Chart GrowthBook product data, build Analytics dashboards, manage the metric catalog, or query the warehouse directly — run Product Analytics explorations, save charts together on a dashboard, search metrics and fact tables, create fact metrics and their fact tables, or fall back to ad-hoc SQL. Use for "show me signups by country", "chart daily active users", "how many orders last week", "build me a dashboard", "put these metrics on a dashboard", "add a chart to this dashboard", "set up reporting for X", "find our revenue metric", "what fact tables exist", "create a metric", "define a metric on the orders table", "what tables contain user data", "run a SQL query", or any "show me / chart / plot / how many" question about product data. For an A/B test's results or choosing experiment metrics, use experiments. For feature flags, use feature-flags. For first-time API key configuration, use gb-setup.
+description: Chart GrowthBook product data, build Analytics dashboards, manage the metric catalog, or query the warehouse directly — run Product Analytics explorations, save charts together on a dashboard, search metrics and fact tables, create fact metrics and their fact tables, or fall back to ad-hoc SQL. Use for "show me signups by country", "chart daily active users", "how many orders last week", "build me a dashboard", "put these metrics on a dashboard", "add a chart to this dashboard", "set up reporting for X", "find our revenue metric", "what fact tables exist", "create a metric", "define a metric on the orders table", "connect our warehouse", "add a data source", "what tables contain user data", "run a SQL query", or any "show me / chart / plot / how many" question about product data. For an A/B test's results or choosing experiment metrics, use experiments. For feature flags, use feature-flags. For first-time API key configuration, use gb-setup.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *), Bash(sleep *)
 ---
 
@@ -20,6 +20,7 @@ When a workflow needs to construct a GrowthBook UI link from a root-relative pat
 | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | `references/metric-search.md`     | Browse, find, or audit metrics and fact tables — inventory, a specific definition, or "what can I chart" triage (read-only) |
 | `references/metric-create.md`     | Create a fact metric, creating its underlying fact table first when necessary (writes configuration)                       |
+| `references/datasource-create.md` | Connect a warehouse or Mixpanel project as a new data source (writes configuration and handles credentials)                |
 | `references/analytics-explore.md` | Actually run a chart and report the numbers plus a deep link                                                                |
 | `references/dashboard-create.md`  | Build a new dashboard — several charts saved together on one page (writes a dashboard)                                     |
 | `references/dashboard-edit.md`    | Change a dashboard that already exists: add or remove a chart, swap a metric, change the timeframe, rename it               |
@@ -56,7 +57,7 @@ Use `sql-query.md` only when the question can't be answered with existing metric
 
 ## Read-only vs. write
 
-`metric-search` is strictly read-only. `analytics-explore` runs warehouse queries but changes no GrowthBook configuration — it does not create metrics, fact tables, or dashboards. `sql-query` is similar: it never mutates warehouse data, but it executes potentially costly queries and persists a GrowthBook exploration object from the results. `metric-create` writes organization-visible fact-table and fact-metric definitions, and `dashboard-create` / `dashboard-edit` write dashboards; all three must summarize the change in plain language and get confirmation before each write.
+`metric-search` is strictly read-only. `analytics-explore` runs warehouse queries but changes no GrowthBook configuration — it does not create metrics, fact tables, or dashboards. `sql-query` is similar: it never mutates warehouse data, but it executes potentially costly queries and persists a GrowthBook exploration object from the results. `metric-create` writes organization-visible fact-table and fact-metric definitions, `datasource-create` writes a data source from credentials the user supplies, and `dashboard-create` / `dashboard-edit` write dashboards; all four must summarize the change in plain language and get confirmation before each write.
 
 Note that explorations execute real warehouse queries, so they cost the user money and time even though they write nothing — and a dashboard write runs one per chart block. Scope them the way the reference files describe rather than fanning out speculatively.
 
