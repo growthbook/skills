@@ -1,6 +1,6 @@
 ---
 name: feature-flags
-description: Read and modify GrowthBook feature flags — create, search, toggle, target, schedule, ramp, monitor, publish drafts, and archive. Use when the user mentions a feature flag, feature toggle, kill switch, rollout, targeting rule, percentage release, saved group, prerequisite, draft revision, flag approval, or flag cleanup. Triggers include "create a flag for X", "release this to 10% of users", "turn on flag X in production", "gradually roll this out", "publish this draft", "what flags do we have", "who needs to approve this", and "delete this stale flag". For designing, launching, analyzing, or stopping an A/B test, use the experiments skill. For charting product data or browsing the metric catalog, use the analytics skill. For first-time API key configuration, use gb-setup.
+description: Read and modify GrowthBook feature flags — create, search, toggle, target, schedule, ramp, monitor, publish drafts, and archive. Use when the user mentions a feature flag, feature toggle, kill switch, rollout, targeting rule, percentage release, saved group, prerequisite, config, draft revision, flag approval, or flag cleanup. Triggers include "create a flag for X", "release this to 10% of users", "turn on flag X in production", "gradually roll this out", "publish this draft", "edit the value or schema of config X", "what flags do we have", "who needs to approve this", and "delete this stale flag". For designing, launching, analyzing, or stopping an A/B test, use the experiments skill. For charting product data or browsing the metric catalog, use the analytics skill. For first-time API key configuration, use gb-setup.
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/gb-call *)
 ---
 
@@ -37,6 +37,7 @@ Read exactly one of these, based on what the user is doing. If two look plausibl
 | `references/flag-review.md` | Request a review, or approve / request changes / comment on a draft |
 | `references/flag-publish.md` | Publish a draft, resolve a merge conflict, revert, or discard |
 | `references/flag-cleanup.md` | Archive or delete a stale flag, inlining its value at code sites first |
+| `references/config-edit.md` | Change the value or schema of a Config through a draft, then publish it |
 
 Ambiguity worth resolving before you read: "turn off the flag" is `flag-toggle` if they mean the whole environment, `flag-rules` if they mean one rule. "Roll this out" is `flag-targeting` for a one-shot percentage, `flag-ramp` for a schedule, `flag-monitoring` if guardrail metrics should gate it.
 
