@@ -25,7 +25,7 @@ These workflows target `type: "standard"` experiments. GrowthBook's REST API als
 | `references/experiment-brainstorm.md` | Get ideas for what to test, grounded in past stopped experiments (proposes only) |
 | `references/experiment-design.md` | Turn an idea into a launchable spec — hypothesis, variations, metrics, sample size (writes nothing) |
 | `references/experiment-launch.md` | Create the experiment, prep or reuse the flag, wire the experiment-ref rule, and start it |
-| `references/experiment-analyze.md` | Read results — refresh the snapshot if stale, then interpret (read-only) |
+| `references/experiment-analyze.md` | Check an experiment's status, health or readiness to ship, or read its results in metric and dimension detail (read-only) |
 | `references/experiment-stop.md` | Stop a running experiment, optionally declare a winner and roll it out |
 | `references/learnings.md` | Search and read prior conclusions, or create, update, and delete curated Learnings across experiments |
 
