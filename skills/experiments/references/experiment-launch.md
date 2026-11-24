@@ -58,7 +58,7 @@ Track progress with this checklist. Do not skip or reorder.
 - [ ] 4. Create or reuse the feature flag
 - [ ] 5. Add the experiment-ref rule on a fresh draft revision
 - [ ] 6. Prompt user to QA the experiment and feature flag config
-- [ ] 7. POST /start; branch to 7a (approval) or 7b (checklist) on 400
+- [ ] 7. POST /start; branch to 7a (approval) or 7b (checklist) on 409
 - [ ] 8. Report links and state
 ```
 
@@ -271,10 +271,11 @@ The `/start` endpoint does two things server-side:
 1. Publishes the draft feature revision from step 5 (`publishPendingFeatureDraftsForExperiment`).
 2. Enforces the org's pre-launch checklist.
 
-Either can fail with a `400`. Branch:
+Either can fail with a `409`. Branch on the body's `code`:
 
-- Body starts with **"This revision requires approval before publishing"** → step 7a.
-- Body lists incomplete checklist items → step 7b.
+- `checklist_incomplete` with a `gates` entry of `type: "approval-required"` → step 7a.
+- `checklist_incomplete` with any other gate → step 7b.
+- `pending_draft_publish_failed` → the draft could not publish. Surface `details.failedFeatureDrafts` (`featureId`, `revisionVersion`, `reason`) and halt. For `merge-conflict` or `needs-rebase`, hand off to the **feature-flags** skill (`flag-publish` workflow) to rebase the draft, then re-run me from `/start`.
 - `2xx` → step 8.
 
 #### 7a. Approval required
@@ -304,15 +305,15 @@ Do **not** silently retry `/start`, ignore the error, or discard and recreate th
 
 #### 7b. Checklist incomplete
 
-The REST API does not expose a separate `start-checklist` endpoint — the failure body from `/start` is the canonical source. Parse it and surface the incomplete items verbatim:
+The `gates` array in the `/start` failure body lists every blocker. `GET /api/v1/experiments/<exp_id>/start-checklist` returns the same `gates`, with `status: "notReady"` while any remain. Surface each gate's `type` and `messages` verbatim:
 
 > The pre-launch checklist isn't complete. The `/start` call returned:
 >
-> `<full error body>`
+> `<each gate's type and messages>`
 >
 > Fix the listed items in the GrowthBook UI at `/experiment/<exp_id>`, then re-run me — I'll jump straight back to `/start`.
 
-Only retry `/start` with `{"skipChecklist": true}` in the body if the user **explicitly** asks to bypass. Never default to bypassing; the checklist is intentional friction.
+Only retry `/start` with `{"skipChecklist": true}` in the body if the user **explicitly** asks to bypass. `skipChecklist` clears only gates whose `override` is `"skipChecklist"`. A gate with `override: null` (for example a linked flag's merge conflict) still returns `409` with the flag set, so fix it instead. Never default to bypassing; the checklist is intentional friction.
 
 ### 8. Report
 
@@ -323,7 +324,7 @@ Print a summary:
 - Template used (name + id) if any
 - Unit of randomization (`hashAttribute`)
 - Variations and their values
-- Pre-launch checklist status (should be `allRequiredComplete=true`)
+- Gates the start bypassed (`bypassedGates` in the `/start` response), if any
 - Experiment status (should be `running` after a clean `/start`)
 - Direct UI paths:
   - Experiment: `/experiment/<exp_id>`
@@ -352,7 +353,8 @@ Print a summary:
 - `GET /api/v2/features/<id>` — fetch the flag for the reuse compatibility checks
 - `POST /api/v2/features/<id>/revisions/new/rules` — atomic draft + add experiment-ref rule
 - `POST /api/v2/features/<id>/revisions/<version>/request-review` — used only in the 6a "request review" path
-- `POST /api/v1/experiments/<id>/start` — publish the draft revision and start the experiment. Body accepts `{"skipChecklist": true}` to bypass the pre-launch checklist when the user explicitly opts in. Failure responses carry the canonical reason in the body — there's no separate `start-checklist` GET to query.
+- `POST /api/v1/experiments/<id>/start` — publish the draft revision and start the experiment. Body accepts `{"skipChecklist": true}` to bypass the pre-launch checklist when the user explicitly opts in. Failure responses carry each blocker in `gates`.
+- `GET /api/v1/experiments/<id>/start-checklist` — list the launch checklist `checklistItems` and `gates` when `/start` returns `checklist_incomplete`
 
 ## Handoffs
 
