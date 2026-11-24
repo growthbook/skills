@@ -62,29 +62,32 @@ Fetch results, refresh the snapshot only when the cached data is over 24 hours o
 
    - `phase` (integer, 0-indexed): pick a specific phase if the experiment has multiple — e.g., re-analyze the pre-ramp phase after the experiment has ramped up. Defaults to the latest phase.
    - `dimension` (string): break the results down. Built-in: `"pre:date"`, `"pre:activation"`. For a configured Unit Dimension, use its ID (e.g. `"dim_abc123"`). For an Experiment Dimension, prefix with `"exp:"` (e.g. `"exp:country"`).
+   - `updateScope` (string): always send `"all_metrics"`. The default, `"auto"`, can compute only the metrics added since the latest results and leave the results' end date where it was, which is not the refresh this step is for. A self-hosted version that predates the field rejects it with `400`; resend without it.
 
    ```bash
-   echo '{}' | gb-call POST /api/v1/experiments/<experiment-id>/snapshot -
+   echo '{"updateScope": "all_metrics"}' | gb-call POST /api/v1/experiments/<experiment-id>/snapshot -
    # or with phase + dimension:
-   echo '{"phase": 1, "dimension": "exp:country"}' \
+   echo '{"phase": 1, "dimension": "exp:country", "updateScope": "all_metrics"}' \
      | gb-call POST /api/v1/experiments/<experiment-id>/snapshot -
    ```
 
-   The response is `{ snapshot: { id, experiment, status } }`. Capture `snapshot.id`.
+   The response is `{ snapshot: { id, experiment, status, updateScope } }`. Capture `snapshot.id`.
 
    If the experiment is `stopped` and the organization has disabled updating results for stopped experiments, the POST returns `422` with a `warnings` array. Skip 3b and 3c and tell the user the results are frozen by an organization setting. If step 1 returned a result, report it with its `dateUpdated`. Otherwise, stop and explain that no saved result exists for the requested phase/dimension and the current setting prevents creating one. Do not resend with `ignoreWarnings`.
+
+   If the POST returns `409` with `code` `snapshot_in_progress`, another update of this experiment is already running. Poll `details.snapshotId` as in 3b when it is present, then continue to 3c. When `details.snapshotId` is absent, tell the user an update is running and to retry in a few minutes.
 
    **3b. Poll for completion.** Snapshot creation is asynchronous:
 
    ```bash
    for i in $(seq 1 60); do
      gb-call GET /api/v1/snapshots/<snapshot-id>
-     # Parse snapshot.status. Stop when it is "success" or "error".
+     # Parse snapshot.status. Stop when it is "success" or "error"; on "error", snapshot.error says why.
      sleep 5
    done
    ```
 
-   Cap the loop at 60 iterations (5 minutes). If it hasn't finished by then, stop polling and tell the user the snapshot is still in progress — they can retry the skill in a few minutes. Don't loop forever.
+   Cap the loop at 60 iterations (5 minutes). If it hasn't finished by then, stop polling and tell the user the snapshot is still in progress — they can retry the skill in a few minutes. Don't loop forever. If the status is `error`, report `snapshot.error` to the user and skip 3c.
 
    **3c. Re-fetch results** with the same phase/dimension args used in 3a, then re-capture the fields listed in step 1:
 
@@ -188,8 +191,8 @@ Fetch results, refresh the snapshot only when the cached data is over 24 hours o
 
 - `GET /api/v1/experiments?q=<text>` — resolve an experiment ID when the user only gave a name or keyword. `q` matches name, tracking key, description, and hypothesis; pair with `sortBy=dateUpdated&sortOrder=desc` so active experiments surface first.
 - `GET /api/v1/experiments/<id>/results` — primary entry point; returns `{ experiment, result }` so step 1 grabs metadata, status, and the snapshot timestamp (`result.dateUpdated`) in a single call. Accepts `phase` / `dimension` query params.
-- `POST /api/v1/experiments/<id>/snapshot` — trigger a fresh snapshot when results are over 24h old or the user wants a phase/dimension cut the cached snapshot doesn't cover. Body accepts `phase` (integer) and `dimension` (string).
-- `GET /api/v1/snapshots/<snapshot-id>` — poll for snapshot completion (5s interval, 60 iteration cap). Returns `{ snapshot: { id, experiment, status } }`.
+- `POST /api/v1/experiments/<id>/snapshot` — trigger a fresh snapshot when results are over 24h old or the user wants a phase/dimension cut the cached snapshot doesn't cover. Body accepts `phase` (integer), `dimension` (string), and `updateScope` (`auto`, `new_metrics`, or `all_metrics`; this workflow sends `all_metrics`). Returns `{ snapshot: { id, experiment, status, updateScope } }`.
+- `GET /api/v1/snapshots/<snapshot-id>` — poll for snapshot completion (5s interval, 60 iteration cap). Returns `{ snapshot: { id, experiment, status, updateScope } }`, plus `error` when `status` is `error`.
 
 ## Handoffs
 
