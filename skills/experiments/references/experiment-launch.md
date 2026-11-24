@@ -41,7 +41,7 @@ Collect from the user (or earlier skill output) before starting. Prompt for what
 If no template is used, also collect (or resolve interactively in step 2):
 
 - **Datasource** — id or English name
-- **Hash attribute** — the unit of randomization (`id`, `device_id`, etc.). Must equal the `identifierType` of the assignment query selected on the datasource.
+- **Hash attribute** — the unit of randomization (`id`, `device_id`, etc.). Must be one of the `identifierTypes` of the assignment query selected on the datasource.
 - **Assignment query** — id or English name; lives inside the chosen datasource's `assignmentQueries`
 - **Goal metric ID** — exactly one (the primary KPI you'd ship or kill on)
 - **Secondary metric IDs** — supporting metrics
@@ -95,11 +95,13 @@ gb-call GET /api/v1/data-sources
 
 Resolve English name or ID against `dataSources[].name` / `id`. Capture `DATASOURCE_ID` and keep the full object — 2c reads its `assignmentQueries`.
 
-**2c. Pick the assignment query.** Filter `dataSources[].assignmentQueries` to entries where `identifierType === HASH_ATTRIBUTE`:
+**2c. Pick the assignment query.** Filter `dataSources[].assignmentQueries` to entries whose `identifierTypes` include `HASH_ATTRIBUTE`:
 
 - **Exactly one match** → auto-select it; print one line stating the choice.
 - **Zero matches** → halt and offer three fixes: pick a different datasource (rerun 2b), change the hash attribute (rerun 2a), or add an assignment query for `<HASH_ATTRIBUTE>` in GrowthBook.
-- **Two or more** → list each as `name (identifierType=<value>) — <description>` and let the user pick.
+- **Two or more** → list each as `name (identifierTypes=<values>) — <description>` and let the user pick.
+
+When a **Project ID** is set, also drop queries that aren't available in it. A query's project list is its `projects` when non-empty, otherwise the datasource's `projectIds`; an empty list means every project. Keep a query only if its list is empty or contains the project. Apply this filter before counting matches.
 
 If `assignmentQueries` is empty entirely, halt and tell the user to configure one in GrowthBook before re-running.
 
@@ -120,7 +122,7 @@ Help the user pick:
 
 Set `trackingKey` to the feature flag name so the SDK ties exposures to the flag. Each variation needs a stable string `key` (`"0"`, `"1"`, ...) and `name`. Variation values live on the flag rule (step 5), not on the experiment payload.
 
-**Template path** — do NOT also send `datasourceId` / `assignmentQueryId`; the template provides them and the API rejects the combination.
+**Template path** — do NOT also send `datasourceId` / `assignmentQuery` / `assignmentQueryId`; the template provides them and the API rejects the combination.
 
 ```json
 {
@@ -141,7 +143,7 @@ Set `trackingKey` to the feature flag name so the SDK ties exposures to the flag
 ```json
 {
   "datasourceId": "<DATASOURCE_ID>",
-  "assignmentQueryId": "<ASSIGNMENT_QUERY_ID>",
+  "assignmentQuery": { "id": "<ASSIGNMENT_QUERY_ID>", "identifierType": "<HASH_ATTRIBUTE>" },
   "hashAttribute": "<HASH_ATTRIBUTE>",
   "trackingKey": "<flag-name>",
   "name": "<experiment name>",
@@ -159,6 +161,7 @@ Set `trackingKey` to the feature flag name so the SDK ties exposures to the flag
 
 Notes:
 
+- Send `assignmentQuery.identifierType` always. A query that declares several `identifierTypes` rejects a bare `assignmentQueryId` with `400`.
 - `metrics` is the goal-metric array; with the one-goal rule it should always be length 1.
 - Omit `secondaryMetrics` / `guardrailMetrics` entirely if the user picked none. Don't send empty arrays.
 
@@ -334,8 +337,9 @@ Print a summary:
 - **Ideally one goal metric, two max.** GrowthBook's decision framework treats goal metrics as plural by design and the power calculator supports up to five, but each additional goal dilutes power and complicates the ship/kill decision. Push back at three or more; demote the rest to secondary.
 - **At least one guardrail.** Push back if the user skips guardrails.
 - **`hashAttribute` and `assignmentQuery.identifierType` must match.** Mismatch is a real and recoverable error; surface the fix paths in step 2c.
+- **The assignment query must be available in the experiment's `project`.** A query scoped to other projects makes the POST fail with a `400` ("isn't available for the selected project"); filter in step 2c.
 - **Metrics must live on the experiment's datasource.** Filter `/v1/metrics` and `/v1/fact-metrics` by `datasourceId` in step 2d.
-- **Do NOT mix `templateId` with `datasourceId`/`assignmentQueryId`.** The template path supplies those; the no-template path supplies them explicitly. Mixing yields a `400`.
+- **Do NOT mix `templateId` with `datasourceId`/`assignmentQuery`/`assignmentQueryId`.** The template path supplies those; the no-template path supplies them explicitly. Mixing yields a `400`.
 - **Flag default = control value.** Variation values for flag-linked experiments are strings on the rule — `"false"`/`"true"` for booleans, `"42"` for numbers, JSON-encoded text for `json`.
 - **Reuse with care.** Always run the step 4 compatibility checks before reusing an existing flag. Silently attaching to a flag with the wrong `valueType`, wrong `project`, or a conflicting rule will break the experiment or step on a teammate's in-flight test.
 - **No manual revision publish.** The step 5 draft is published by `/start` in step 7. Do not call publish endpoints separately - **Approval failures: do not self-approve.** The API blocks approval on drafts you created. Walk the user through 6a instead.

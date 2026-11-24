@@ -41,7 +41,7 @@ This router deliberately carries no statistical guidance of its own. Interpretat
 
 - **Metrics must already exist.** No workflow here creates a metric. When one is missing, the user creates it in the GrowthBook UI first; the reference file says where.
 - **Metrics must live on the experiment's datasource** or the experiment POST fails.
-- **Don't mix `templateId` with `datasourceId` / `assignmentQueryId`** on create.
+- **Don't mix `templateId` with `datasourceId` / `assignmentQuery` / `assignmentQueryId`** on create.
 - **`winnerVariationId` is a variation ID string** (e.g. `var_abc123`) — not an integer index, not a variation name.
 - **Resolve-by-name uses `q`,** which matches name, tracking key, description, and hypothesis. It rejects `!`, `~`, `^`, `>`, `<`, `=` with a 400 — send plain `field:value` tokens and free text. Filter bandits with `bandits`, never `type` (`type` is not a list param; `implementationType` is a different axis).
 - **`result` is the recorded result and survives a restart,** so `result=won` can return a running experiment. Pair it with `status=stopped`.
