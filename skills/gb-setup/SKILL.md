@@ -51,6 +51,8 @@ Resolve the bundled helper for the current client before using it: under the Cla
    >
    > PATs start with `gb_pat_`; Secret Keys with `secret_`. Either works.
 
+   **Validate the key's shape before it goes anywhere near a shell command.** Step 4 places it inside a bash command, so a pasted value containing a quote, space, `$`, backtick, `;`, `|`, `&`, or a newline could run as shell. A real PAT or Secret Key is a single token of letters, digits, `_`, `-`, and `.`. Refuse anything else without repeating it back, and ask the user to paste it again; don't strip or repair it.
+
    Once captured, never echo the value back in any later step — mask all but the last 4 characters.
 
 3. **Ask about self-hosted** (optional `GB_API_URL` and `GB_APP_URL`).
@@ -68,7 +70,7 @@ Resolve the bundled helper for the current client before using it: under the Cla
 
    - Must parse as a URL (i.e. `new URL(value)` does not throw).
    - Scheme must be `https://` (refuse `http://` — auth headers over cleartext leak credentials; refuse `file://`, `data://`, etc.).
-   - Hostname must be non-empty.
+   - Hostname must be non-empty and contain only letters, digits, `.`, and `-`, with an optional numeric `:port`. Step 4 places these values inside a bash command, and URL parsing alone accepts quotes and `;` in a host.
    - No username or password.
    - **No path, query, or hash** — `new URL(value).pathname` must be `/` or empty, with empty `search` and `hash`. A value like `https://api.acme.com/v1` would silently mis-route requests or links; reject with a message that asks for just the origin.
    - Strip a single trailing slash before storing.

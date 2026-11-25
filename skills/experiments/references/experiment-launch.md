@@ -215,7 +215,7 @@ When all checks pass, capture the flag's identity and proceed to step 5. Do **no
 
 ### 5. Add the experiment-ref rule on a fresh draft revision
 
-Use the literal version `new` to create a draft and add the rule in one call. The path segment `new` is a magic value that creates a draft branched off the live revision atomically. If the feature has multiple environments, prompt the user for which environments to go live in, and ensure this rule turns on the feature flag for those environments in addition to adding the rule to those environments.
+Use the literal version `new` to create a draft and add the rule in one call. The path segment `new` is a magic value that creates a draft branched off the live revision atomically. Ask the user which environments to go live in and wait for the answer before building the payload; do not pick a scope for them, and do not omit the scope fields (an omitted scope means all environments). Ensure this rule turns on the feature flag for those environments in addition to adding the rule to those environments. Send `"allEnvironments": true` only when the user explicitly says all environments.
 
 ```json
 {
@@ -223,7 +223,8 @@ Use the literal version `new` to create a draft and add the rule in one call. Th
     "type": "experiment-ref",
     "experimentId": "<exp_id from step 3>",
     "enabled": true,
-    "allEnvironments": true,
+    "allEnvironments": false,
+    "environments": ["<env-id the user chose>"],
     "variations": [
       {
         "value": "<variation 0 value as string>",
