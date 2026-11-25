@@ -59,7 +59,7 @@ Turn the metrics and fact tables you already use for experimentation into ad-hoc
 
 ### `gb-setup`
 
-Walks you through your API key and, for self-hosted installations, the API and app origins. Validates against the live API and writes `~/.config/growthbook/.env` with `chmod 600`. Re-run anytime to update.
+Walks you through creating `~/.config/growthbook/.env` (API key and, for self-hosted installations, the API and app origins) and validates it against the live API. You run a short command in your own terminal to write the file, so the key never enters the chat. Re-run anytime to update.
 
 ## Install
 
@@ -88,7 +88,7 @@ The quickest path is to run the setup skill:
 /growthbook:gb-setup
 ```
 
-It walks you through your API key and (for self-hosted) your API and app origins — then validates against the live API and writes `~/.config/growthbook/.env` with `chmod 600`. Every other skill reads that file automatically.
+It gives you a command to run in your own terminal that prompts for your API key (hidden) and writes `~/.config/growthbook/.env` with `chmod 600`, then validates it against the live API. For self-hosted, it also asks for your API and app origins first. Every other skill reads that file automatically.
 
 **Prefer shell-rc?** You can export the variables instead. The skills read environment variables first; the file is only consulted when an env var is unset.
 
@@ -194,9 +194,9 @@ CHANGELOG.md
 
 ## Security & secrets
 
-- **Where the key lives.** `gb-setup` writes `~/.config/growthbook/.env` inside a `0700` directory at file mode `0600` — owner-read/write only. Environment variables take precedence over the file, so CI and one-off overrides keep working.
-- **Pasting a key into chat.** The value you give `gb-setup` lands in your local transcript and is sent to your configured model provider as part of the conversation; it cannot be retroactively masked. Generate a fresh PAT for the plugin rather than reusing your personal admin token — that way you can revoke it independently if anything goes wrong.
-- **Revoking a leaked key.** Visit [`app.growthbook.io/account/personal-access-tokens`](https://app.growthbook.io/account/personal-access-tokens) (or your self-hosted equivalent) and revoke. Then re-run `/growthbook:gb-setup` with the replacement.
+- **Where the key lives.** The command `gb-setup` gives you writes `~/.config/growthbook/.env` inside a `0700` directory at file mode `0600` — owner-read/write only. Environment variables take precedence over the file, so CI and one-off overrides keep working.
+- **Keep the key out of chat.** `gb-setup` never asks you to paste the key: you type it into a hidden prompt in your own terminal, and `gb-call` reads it from the file. Anything you do paste into chat lands in your local transcript and is sent to your configured model provider, and cannot be retroactively masked, so revoke a key that ends up there. Generate a fresh PAT for the plugin rather than reusing your personal admin token — that way you can revoke it independently if anything goes wrong.
+- **Revoking a leaked key.** Visit [`app.growthbook.io/account/personal-access-tokens`](https://app.growthbook.io/account/personal-access-tokens) (or your self-hosted equivalent) and revoke. Then re-run `/growthbook:gb-setup` to write the replacement.
 - **What the helper rejects.** `gb-call` refuses values containing whitespace or control characters (CRLF in `GB_API_KEY` would inject headers) and rejects malformed `GB_APP_URL` origins. `gb-setup` refuses `http://` URLs and URLs with a path, query, hash, or credentials.
 
 ## Contributing
