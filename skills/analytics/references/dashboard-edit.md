@@ -5,18 +5,18 @@ description: Change a GrowthBook Analytics dashboard that already exists — add
 
 # dashboard-edit
 
-Read a dashboard, apply the change, and write the whole thing back. An update replaces the dashboard's block list outright, so the list you send is the dashboard the user ends up with — every tile being kept, not just the one that changed.
+Changes go into the dashboard's **draft**, one block at a time. Viewers keep seeing the published dashboard until the draft is published, so an edit is safe to make and easy for the user to check first.
 
-Read-then-write is not optional here. Sending a block list assembled from memory is how a tile the user still wants gets deleted.
+Each call changes one thing. There is no block list to send back, so a tile you do not touch cannot be lost.
 
 ## Contents
 
 - Workflow
   - 1. Resolve the dashboard
-  - 2. Read it
+  - 2. Open its draft
   - 3. Apply the change
-  - 4. Write it back
-- What each field does when omitted
+  - 4. Hand it over
+- Changes that are not part of the draft
 - Guardrails
 - Endpoints used
 - Handoffs
@@ -37,109 +37,76 @@ Take the first of these that applies:
 
   One clear match → use it. Several → ask which.
 
-A dashboard with an `experimentId` belongs to that experiment and is edited on the experiment's own page. Say so and stop rather than writing to it.
+A dashboard with an `experimentId` belongs to that experiment and is edited on the experiment's own page. It has no draft. Say so and stop rather than writing to it.
 
-### 2. Read it
+### 2. Open its draft
 
 ```bash
-gb-call GET /api/v1/dashboards/<id>
+gb-call GET /api/v2/dashboards/<id>/draft
 ```
 
-Capture `title`, `projects`, `globalControls`, `comparison`, and the full `blocks` array. Each stored block carries `id`, `uid`, `organization`, `layout`, and — on a chart block — `explorerAnalysisId` and `config`.
-
-The response also carries `owner` (a userId) and `ownerEmail`. Use them to tell the user who owns the dashboard, but never copy either into the update body. An empty `owner` means the dashboard was created through the old v1 endpoint with a secret key and has no owner. Tell the user that, and offer to set one. Don't set it unless they say yes.
+This returns the draft, starting one from the published dashboard if there is none: `{ "draft": { "version", "title", "globalControls", "blocks": [...] } }`. Each block carries its `id`, `layout`, and — on a chart block — its `config`. Read it in the same turn you change it; block ids from an earlier turn may be gone.
 
 ### 3. Apply the change
 
-Start from the blocks you just read and change only what was asked. What you send for each one depends on whether you touched it:
-
-- **Unchanged block** → `{ "id": "dshblk_…" }`. The id alone keeps the tile exactly as saved — its config, its position, and its last result.
-- **Changed block** → the full block copied from the `GET`, with the requested change applied — `organization` and `uid` included. An `id` marks the block as one the dashboard already has, and a saved block is validated whole, so `id` plus a partial block is rejected.
-- **Changed a chart's `config`** → also drop that block's `explorerAnalysisId`, so the write re-runs it. Leave `comparisonExplorerAnalysisId` alone either way — the write discards whatever you send and keeps only its own comparison run, so a copied one can never end up beside fresh primary numbers.
-
-| Change | What to do |
+| Change | Call |
 | --- | --- |
-| Add a tile | Append a new block with `type`, `title`, `description`, `config`, and a `layout` placing it below the others. Omit `explorerAnalysisId` — the write runs the chart. |
-| Remove a tile | Leave it out of the array. |
-| Reorder or resize | Change the `layout` on the blocks involved. |
-| Reconfigure a chart | Change its `config` **and drop its `explorerAnalysisId`**, so the write re-runs it. Keeping the old id leaves the tile showing the old numbers. |
-| Rename the dashboard | Send `title`. |
-| Change the timeframe | Send `globalControls.dateRange`. Only the nine `predefined` names below are real; anything else is `customLookback`. |
-| Turn comparison on | Send `comparison`. |
-| Change the owner | Only when the user asks. Send `{ "owner": "<email or userId>" }` and nothing else, using exactly what the user gave. It must be an email or a `u_...` id; a bare name is rejected, so ask for the email instead of guessing one. Confirm first. |
+| Add a tile | `POST /api/v2/dashboards/<id>/draft/blocks` with `type`, `title`, `description`, `config`, and a `layout` placing it below the others. Use the `description` to say what the chart shows and what to read from it. |
+| Reconfigure, retitle, move or resize a tile | `PUT /api/v2/dashboards/<id>/draft/blocks/<blockId>` with the whole block: copy `type`, `title`, `description`, `layout` and `config` from the draft and apply the change. Leave out `id`, `uid`, `organization` and `explorerAnalysisId`. The chart is run again. |
+| Remove a tile | `DELETE /api/v2/dashboards/<id>/draft/blocks/<blockId>` |
+| Rename the dashboard | `PUT /api/v2/dashboards/<id>/draft` with `title` |
+| Change the timeframe | `PUT /api/v2/dashboards/<id>/draft` with `globalControls.dateRange`. Only the nine `predefined` names are real; anything else is `customLookback`. Every chart that follows the dashboard's date range is run again. |
 
-**`markdown` blocks on a saved dashboard are the user's words.** Carry every one through verbatim and in place, however many there are. Add or reword one only when the user asks — a dashboard with none may well have had one removed on purpose. If your change leaves a legend describing a chart that is gone, say so in your reply and offer to update it, leaving their words as they are.
+```bash
+echo '<block-json>' | gb-call PUT /api/v2/dashboards/<id>/draft/blocks/<blockId> -
+```
 
-**Changing the owner is its own write.** Before sending it, tell the user who owns the dashboard now and who will own it after. Only the current owner or an admin can change it. The new owner must be an organization member with permission to manage the dashboard. A private dashboard is visible only to its owner, so handing one to someone else can take it out of the user's view. A 400 naming the owner means one of those checks failed. Say which one, and don't retry with a different value.
+Draft changes need no confirmation: the draft is private to the people who can edit the dashboard. Do say what you changed once it is done.
+
+**`markdown` blocks are the user's words.** Leave every one as it is. Add or reword one only when the user asks.
 
 For block shapes, the config schema, and the layout arithmetic, read `references/dashboard-create.md`.
 
-### 4. Write it back
+### 4. Hand it over
+
+Report the change in a sentence: tiles added, removed or reconfigured, and anything dashboard-wide such as the date range. Say it is in the draft and that viewers still see the published version.
+
+Publish only when the user says to:
 
 ```bash
-echo '<update-json>' | gb-call PUT /api/v1/dashboards/<id> -
+echo '{}' | gb-call POST /api/v2/dashboards/<id>/draft/publish -
 ```
 
-```json
-{
-  "globalControls": { "dateRange": { "predefined": "last90Days" } },
-  "blocks": ["...the full list, kept blocks unchanged..."]
-}
-```
+## Changes that are not part of the draft
 
-Show the user what changes before the PUT: which tiles are being added, which removed, and which settings altered. Then report what changed in a sentence.
+Ownership, sharing and deletion act on the dashboard itself, straight away, with no draft.
 
-## What each field does when omitted
-
-Every field on an update is optional, and leaving one out keeps the saved value. That makes a narrow change genuinely narrow — a timeframe change needs `globalControls` alone.
-
-That includes `owner`: leave it out and the dashboard keeps its owner. There is no "set it to the same value to be safe." An `owner` in the body is a request to reassign the dashboard, and for an admin it succeeds without a warning.
-
-The exception is `blocks`. Send it and it replaces the list; omit it and every tile is left alone.
-
-**Carry a tile you are not changing as `{ "id": "dshblk_…" }`.** The list still defines membership and order, so a tile you leave out is deleted — but a tile you are keeping needs nothing but its id. Only write out a block in full when you are adding it or changing it. Copying a saved tile back verbatim is a transcription job with nothing to gain and a metric id to get wrong.
-
-Adding one chart to a five-tile dashboard is therefore five refs and one new block:
-
-```json
-{
-  "blocks": [
-    { "id": "dshblk_a" },
-    { "id": "dshblk_b" },
-    { "id": "dshblk_c" },
-    { "id": "dshblk_d" },
-    { "id": "dshblk_e" },
-    { "type": "metric-exploration", "title": "Revenue per User — past 6 months", "description": "", "layout": { "x": 0, "y": 24, "w": 24, "h": 8 }, "config": { "…": "…" } }
-  ]
-}
-```
-
-An id that is not on the dashboard is rejected, so a mistyped ref fails the write instead of quietly dropping a tile. So is the same id listed twice — a duplicate would save two tiles sharing one id, which breaks their layout and every later edit of either.
-
-Changing `globalControls.dateRange` re-runs every chart enrolled in it, against the new range, and changing `comparison` re-runs every chart — a dashboard-wide comparison overrides each block's own. The write does that itself: a tile you carried by id comes back with fresh numbers, not the previous window. A dashboard with many tiles is many warehouse queries, so change either only when that is what the user asked for.
-
-These re-runs are best-effort, unlike the blocks you sent in full. A carried tile whose query fails does not fail the `PUT` — the new setting is saved and that one tile keeps its previous result, so the dashboard is saved as 90 days with a tile still showing 30. Nothing in the response says which, so after a timeframe change tell the user the tiles will refresh and to say if one still reads the old window.
+- **Change the owner** — only when the user asks. `PUT /api/v1/dashboards/<id>` with `{ "owner": "<email or userId>" }` and nothing else, using exactly what the user gave. It must be an email or a `u_...` id; a bare name is rejected, so ask for the email instead of guessing one. Before sending it, tell the user who owns the dashboard now (`owner` and `ownerEmail` on `GET /api/v1/dashboards/<id>`) and who will own it after, and get a yes. Only the current owner or an admin can change it, the new owner must be a member who can manage the dashboard, and a private dashboard is visible only to its owner, so handing one over can take it out of the user's view.
+- **Delete the dashboard** — `DELETE /api/v1/dashboards/<id>`, only when the user explicitly asks for that.
 
 ## Guardrails
 
-- **Read before you write.** Always `GET` the dashboard in the same turn as the `PUT`. A block list built from an earlier read, or from the create call you made, can be stale.
-- **A `409` means someone edited the dashboard while your write was in flight.** Nothing was saved. It is the one error a bare retry cannot fix — the block list you are holding is built from a version that no longer exists, so re-sending it would clobber their change. `GET` the dashboard again, re-apply the user's change to the new block list, and tell them the dashboard moved under you before writing again. If it conflicts twice, stop and say someone else is editing it.
-- **Send the full block list, or none.** A partial list deletes the tiles it omits.
-- **Carry an unchanged tile by id alone, and each id at most once.** `{ "id": "dshblk_…" }` keeps it exactly as saved; a repeated id is rejected. When you do send a block in full because you changed it, send it exactly as the `GET` returned it — `id`, `uid`, `organization`, `layout` — with your edit applied. Dropping the `id` to get a rejected block accepted is the worst repair available: the write returns 200 and the tile is silently a new one, with a new id, a re-run query, and every reference to the old one broken.
-- **Drop `explorerAnalysisId` only when you changed that chart's `config`.** Dropping it otherwise re-runs a query for nothing; keeping it after a config change shows numbers that do not match the tile.
-- **Summarize the delta, then get a yes.** State what changes, not what the dashboard ends up as: tiles added, tiles removed, tiles whose config moved, and anything dashboard-wide such as the date range. Name removals explicitly — that is the change a user is most likely to have meant differently. Tiles carried through untouched need no mention.
+- **Edit the draft, never the published dashboard's blocks.** Do not send `blocks`, `title` or `globalControls` to `PUT /api/v1/dashboards/<id>`. That writes straight to what viewers see and skips the draft.
+- **Read the draft before you change it.** `GET` it in the same turn as the write, and take block ids from that response.
+- **A block is replaced whole.** A `PUT` on a block is the full block, not a patch. Copy it from the draft and change only what was asked.
+- **A chart that cannot run fails only its own call.** Nothing else in the draft changes, and the error names the field. Fix it and send that block again once. If it fails a second time, stop and tell the user rather than guessing another value.
+- **A `409` means the draft was published or discarded while you were working.** `GET` the draft again, which starts a new one, and re-apply the change.
+- **Never publish on your own.** Publishing changes what everyone with access sees. It waits for the user's word.
 - **The closed `predefined` list applies twice here**: to `globalControls.dateRange` and to each block's `config.dateRange`. The names are in the router's shared conventions; anything outside them is `customLookback`, so six months is `{ "predefined": "customLookback", "lookbackValue": 6, "lookbackUnit": "month" }` in both places.
-- **A chart you sent in full and cannot run fails the whole update.** Nothing is written, and the error names the block. Fix that config and call again. A tile you carried by id is the other case: it is only re-run when a dashboard-wide setting changed, and a failure there is logged server-side rather than returned, leaving the tile on its previous result.
-- **A failed comparison never fails a write, and never leaves a stale one behind.** Only the primary query does. A chart whose compare-to-previous-period run fails — or whose comparison you just turned off — is saved with no comparison at all rather than the previous run's, so a tile can come back showing a single series where the user asked for two.
-- **Never send `owner` unless the user asked to change the owner.** Not the current user's email, not the value from the `GET`, and not as part of any other edit. When building a body from a `GET` response, remove `owner` and `ownerEmail`. An admin's write with a wrong `owner` silently reassigns the dashboard. An empty `owner` from the `GET` is something to report to the user, not something to fix.
-- **Leave `experimentId` out of the update.** It is rejected there, and a general dashboard has none.
-- **Renaming a tile is not renaming the dashboard.** A block's `title` is the tile heading; the dashboard's `title` is the page name.
+- **Charts cost money and time.** Adding or replacing a chart block runs a real warehouse query, and changing the date range re-runs every chart that follows it. Change only what the user asked for.
+- **Never send `owner` unless the user asked to change the owner.** An admin's write with a wrong `owner` silently reassigns the dashboard.
+- **Renaming a tile is not renaming the dashboard.** A block's `title` is the tile heading; the draft's `title` is the page name.
 
 ## Endpoints used
 
 - `GET /api/v1/dashboards` — list dashboards
-- `GET /api/v1/dashboards/:id` — read one, including its blocks, `owner`, and `ownerEmail`
-- `PUT /api/v1/dashboards/:id` — write the change (`409` if the dashboard changed since your `GET`). This is the only update endpoint; there is no v2 `PUT`. `owner` is accepted only when the user asked to reassign the dashboard.
+- `GET /api/v2/dashboards/:id/draft` — read the draft, starting one if needed
+- `PUT /api/v2/dashboards/:id/draft` — rename, or change dashboard-wide controls
+- `POST /api/v2/dashboards/:id/draft/blocks` — add one block; runs its chart
+- `PUT /api/v2/dashboards/:id/draft/blocks/:blockId` — replace one block; runs its chart
+- `DELETE /api/v2/dashboards/:id/draft/blocks/:blockId` — remove one block
+- `POST /api/v2/dashboards/:id/draft/publish` — publish the draft, only when the user says so
+- `GET /api/v1/dashboards/:id` and `PUT /api/v1/dashboards/:id` — read and change the owner, only when the user asks
 - `DELETE /api/v1/dashboards/:id` — delete a dashboard, when the user explicitly asks for that
 - `GET /api/v1/fact-metrics` and `GET /api/v1/fact-tables/:id` — when the change needs a metric or column the conversation has not resolved
 
