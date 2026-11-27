@@ -1,15 +1,15 @@
 ---
 name: dashboard-create
-description: Build a new GrowthBook Analytics dashboard from a goal or a set of metrics — settle the brief, pick the blocks, and create it in one call. Use when the user asks to "build me a dashboard", "make a dashboard for X", "put these metrics on a dashboard", "I want to track X and Y", or "set up reporting for X". For changing a dashboard that already exists, use dashboard-edit. For a single one-off chart, use analytics-explore.
+description: Build a new GrowthBook Analytics dashboard from a goal or a set of metrics — settle the brief, pick the blocks, and build it one block at a time in a draft the user can watch and publish. Use when the user asks to "build me a dashboard", "make a dashboard for X", "put these metrics on a dashboard", "I want to track X and Y", or "set up reporting for X". For changing a dashboard that already exists, use dashboard-edit. For a single one-off chart, use analytics-explore.
 ---
 
 # dashboard-create
 
 Create a general (Product Analytics) dashboard: a saved page of chart tiles over the metrics and fact tables the organization already has.
 
-Chart blocks carry a `config` and nothing else. The create call runs every one of them server-side and wires the results onto the tiles, so this workflow never runs an exploration of its own — one write, one confirmation, one dashboard.
+A dashboard is built in a **draft**. You create the dashboard unpublished, then add its blocks to the draft one call at a time. Each chart block carries a `config` and nothing else: the call that adds it runs the chart server-side, so this workflow never runs an exploration of its own. The user can open the dashboard while it fills in, and nobody else sees it until the draft is published.
 
-It deliberately stops at creation. Renaming, re-scoping, and adding or removing tiles afterwards belong to `dashboard-edit`.
+It stops when the draft is built. Changing a dashboard that already has content belongs to `dashboard-edit`.
 
 ## Contents
 
@@ -20,7 +20,9 @@ It deliberately stops at creation. Renaming, re-scoping, and adding or removing 
   - 4. Find the metrics
   - 5. Look up columns and values
   - 6. Build the blocks
-  - 7. Create the dashboard
+  - 7. Create the unpublished dashboard
+  - 8. Add the blocks
+  - 9. Hand it over
 - Block reference
 - Layout
 - Ask budget
@@ -64,7 +66,7 @@ Pick an archetype before picking blocks — one decision here replaces half a do
 | **Single-metric deep dive** | `bigNumber`, `line` trend, one `bar` breakdown per dimension, optional `fact-table-exploration` table |
 | **Experiment program review** | `experiments-status` + `experiments-win-rate`, then `metric-experiments` + `experiments-scaled-impact` |
 
-Archetypes compose: "signup funnel plus how our tests are doing" is the funnel set followed by the experiment-program set, under one legend.
+Archetypes compose: "signup funnel plus how our tests are doing" is the funnel set followed by the experiment-program set.
 
 If the request clearly implies an archetype, pick it and say which one you picked. Only ask when two or more are genuinely plausible.
 
@@ -94,23 +96,24 @@ Only when the dashboard needs a breakdown or a row filter. `columns[]` on the fa
 
 ### 6. Build the blocks
 
-Every block needs `type`, `title`, and `description` (`""` is fine for the description, but always give a chart a real title — it is the tile's heading). Chart blocks add `config`. See **Block reference** below, and **Layout** for `layout`.
+Every block needs `type`, `title`, and `description`. Always give a chart a real title — it is the tile's heading. Chart blocks add `config`. See **Block reference** below, and **Layout** for `layout`.
 
-Add exactly one `markdown` block, first in the list, as the legend: one opening line on what the dashboard is for, then one line per chart saying what to read from it. That one covers the whole page — each chart labels itself through its own `title`.
+Each chart explains itself. Put one or two sentences in its `description`, which shows under the title: what the chart shows and what to read from it. Do not add a `markdown` block to introduce or explain the dashboard; add one only when the user asks for a text block.
 
-### 7. Create the dashboard
+### 7. Create the unpublished dashboard
 
-One POST with the whole thing. Show the user the payload and get confirmation first — this creates something the whole organization may see.
+**Skip this step when the dashboard already exists** — for example when you are working inside GrowthBook's dashboard builder, which tells you the id of the dashboard to build into. Go straight to step 8 with that id.
+
+Otherwise say what the dashboard will contain and get a yes, then create it empty and unpublished:
 
 ```bash
 echo '<dashboard-json>' | gb-call POST /api/v2/dashboards -
 ```
 
-Leave `owner` out, as below, and the dashboard belongs to whoever the API key belongs to. Add `"owner": "<email or userId>"` only when the user names someone else to own it, and pass exactly what they gave you. That has to be an email or a `u_...` id. If they gave only a name ("make Priya the owner"), ask for her email before creating. A name is rejected, and don't guess an email from it.
-
 ```json
 {
   "title": "Growth KPIs",
+  "isDraft": true,
   "editLevel": "private",
   "shareLevel": "private",
   "enableAutoUpdates": false,
@@ -119,39 +122,55 @@ Leave `owner` out, as below, and the dashboard belongs to whoever the API key be
     "dateRange": { "predefined": "last30Days" },
     "dateGranularity": "auto"
   },
-  "blocks": [
-    {
-      "type": "markdown",
-      "title": "About this dashboard",
-      "description": "",
-      "layout": { "x": 0, "y": 0, "w": 24, "h": 3 },
-      "content": "How revenue and signups are tracking over the last 30 days.\n\n- **Revenue** — total revenue in the period.\n- **Revenue over time** — daily revenue; watch for step changes."
-    },
-    {
-      "type": "metric-exploration",
-      "title": "Revenue",
-      "description": "",
-      "layout": { "x": 0, "y": 3, "w": 8, "h": 4 },
-      "config": { "...": "a bigNumber metric config" }
-    },
-    {
-      "type": "metric-exploration",
-      "title": "Revenue over time",
-      "description": "",
-      "layout": { "x": 0, "y": 7, "w": 12, "h": 8 },
-      "config": { "...": "a line metric config" }
-    }
-  ]
+  "blocks": []
 }
 ```
 
+Leave `owner` out, as above, and the dashboard belongs to whoever the API key belongs to. Add `"owner": "<email or userId>"` only when the user names someone else to own it, and pass exactly what they gave you. That has to be an email or a `u_...` id. If they gave only a name ("make Priya the owner"), ask for her email before creating. A name is rejected, and don't guess an email from it.
+
 A 400 saying the request must specify an `owner` means the API key is an organization secret key, which has no user to default to. Ask the user who should own the dashboard, then send the same payload with that `owner` added.
 
-The response is `{ "dashboard": { "id": "dash_...", ... } }`. Report what is on the dashboard in a sentence, plus any assumption you made, and link it at `/product-analytics/dashboards/<id>`.
+The response is `{ "dashboard": { "id": "dash_...", ... } }`. Keep the id.
+
+### 8. Add the blocks
+
+If the blocks share a date range and the draft does not have it yet, set it first, so each chart is run with it:
+
+```bash
+echo '{ "globalControls": { "dateRange": { "predefined": "last30Days" } } }' | gb-call PUT /api/v2/dashboards/<id>/draft -
+```
+
+Then add the blocks one call each, in the order they should read. No confirmation is needed: the draft is private.
+
+```bash
+echo '<block-json>' | gb-call POST /api/v2/dashboards/<id>/draft/blocks -
+```
+
+```json
+{
+  "type": "metric-exploration",
+  "title": "Revenue over time",
+  "description": "Daily revenue; watch for step changes.",
+  "layout": { "x": 0, "y": 4, "w": 12, "h": 8 },
+  "config": { "...": "a line metric config" }
+}
+```
+
+The call waits for the chart's query and returns `{ "block": { "id": "dshblk_...", ... }, "draft": { ... } }`. A block whose chart cannot run fails only its own call, and the error names the field: fix it and send that block once more. If it fails again, skip it and carry on with the rest.
+
+### 9. Hand it over
+
+Report what is in the draft in a sentence, plus any block you skipped and any assumption you made, and link it at `/product-analytics/dashboards/<id>`. Say that it is a draft only its owner can see.
+
+Publish only when the user says to:
+
+```bash
+echo '{}' | gb-call POST /api/v2/dashboards/<id>/draft/publish -
+```
 
 ## Block reference
 
-**Required top-level fields:** `title`, `editLevel`, `shareLevel`, `enableAutoUpdates`, `blocks`. `projects`, `globalControls`, `comparison`, and `owner` are optional.
+**Required top-level fields on the create call:** `title`, `editLevel`, `shareLevel`, `enableAutoUpdates`, `blocks` (send `[]`). `isDraft`, `projects`, `globalControls`, `comparison`, and `owner` are optional.
 
 - `owner` — a userId (`u_...`) or the email of an organization member. Omit it for the caller. A display name, an email that matches no member, and `""` are all rejected. Omit `experimentId` — a general dashboard has none, and setting it makes an experiment dashboard instead.
 
@@ -165,7 +184,7 @@ The response is `{ "dashboard": { "id": "dash_...", ... } }`. Report what is on 
 
 `metric-exploration`, `fact-table-exploration`, `data-source-exploration`, and `funnel-exploration` each carry a `config` — the same exploration config `analytics-explore` posts, with the same rules for `unit`, dimensions, chart types, and date ranges. Read that workflow for the config shape.
 
-**Omit `explorerAnalysisId`.** The create call runs each `config` and fills it in. Sending one binds the tile to a run you made yourself, which is only worth doing when you already have it.
+**Omit `explorerAnalysisId`.** The call that adds the block runs its `config` and fills it in. Sending one binds the tile to a run you made yourself, which is only worth doing when you already have it.
 
 `config.type` is the **dataset kind** — `metric`, `fact_table`, `data_source`, or `funnel` — and it must match `dataset.type`. The picture is `chartType`, a separate field: `line`, `area`, `bar`, `stackedBar`, `horizontalBar`, `stackedHorizontalBar`, `table`, `timeseries-table`, `bigNumber`. A chart type is never a `config.type`.
 
@@ -245,7 +264,7 @@ These compute from experiment data and take no `config`.
 
 ### Other blocks
 
-- `markdown` — `content`. The legend, and nothing else.
+- `markdown` — `content`. Only when the user asks for a text block.
 - `sql-explorer` — `savedQueryId` and `blockConfig` (an array of visualization ids; `[]` is valid). Only for a saved query that already exists.
 
 ### Blocks that do not belong here
@@ -263,7 +282,7 @@ The grid is 24 columns wide. Each block takes `layout: { x, y, w, h }` — `x` a
 | KPI tile (`bigNumber`) | 8 | 4 |
 | Paired chart | 12 | 8 |
 | Full-width chart, table, or funnel | 24 | 8 |
-| The legend `markdown` | 24 | 3 |
+| A `markdown` block the user asked for | 24 | 3 |
 
 To place them: walk the blocks in reading order, filling a row left to right while the widths still fit in 24, then start a new row. `x` is the running total of widths in the current row; `y` is the running total of the heights of the rows above; a row is as tall as its tallest block.
 
@@ -306,16 +325,17 @@ Ask only where the answer changes a block. Everywhere else, build something reas
 
 - **Create on `/api/v2/dashboards`, never `/api/v1/dashboards`.** The v1 create is deprecated and ignores `owner`. With a secret key it saves a dashboard that has no owner at all.
 - **`owner` is the user's call, never yours.** Leave it out unless the user named someone else, and never fill it with the current user's email or a guess. When the API asks for one, ask the user. The new owner must be a member who can manage the dashboard, and a private dashboard is visible only to its owner, so say who will be able to see it when you set someone else.
-- **One POST per dashboard.** Every block goes in the create call; the server runs each chart. Do not POST explorations first, and do not create the dashboard and then add tiles to it.
-- **Say what the dashboard will contain, then get a yes.** A dashboard is organization-visible configuration, and the payload is unreadable at a glance. Lead with the name and where it lands, then one bullet per tile — chart type, metric, timeframe — in the words the user would use. Someone who never opens the JSON should be able to tell you got it wrong.
+- **Create it unpublished and empty, then one block per call.** `isDraft: true` and `blocks: []` on the create, then `POST /api/v2/dashboards/<id>/draft/blocks` for each block in reading order. Do not POST explorations first; the block call runs the chart.
+- **Never publish on your own.** A draft is visible only to its owner. Publishing makes it visible to whoever the dashboard is shared with, so it waits for the user's word.
+- **Say what the dashboard will contain, then get a yes, before creating it.** Lead with the name and where it lands, then one bullet per tile — chart type, metric, timeframe — in the words the user would use. Once the dashboard exists, adding blocks to its draft needs no further confirmation.
 - **`explorerAnalysisId` is the server's to fill.** Omit it on every chart block you have not run yourself.
-- **A chart that cannot run fails the whole create.** The dashboard is not created, and the error names the block and the field, so there is no partial dashboard to clean up. Change what the message names and call again once; a payload that repeats a rejected field fails identically. If you cannot tell from the message what a valid value is, stop and ask rather than resending — a dashboard is many blocks, and guessing one field at a time burns a real query per attempt.
-- **A failed comparison does not fail the create.** Only a chart's primary query does. A block whose compare-to-previous-period run fails is saved without the comparison, so the tile lands showing a single series — say so rather than reporting the comparison as built.
+- **A chart that cannot run fails only its own call.** The other blocks stay in the draft, and the error names the field. Change what the message names and send that block again once; a payload that repeats a rejected field fails identically. If it fails a second time, skip the block and tell the user which one and why.
+- **A failed comparison does not fail the block.** Only a chart's primary query does. A block whose compare-to-previous-period run fails is saved without the comparison, so the tile lands showing a single series — say so rather than reporting the comparison as built.
 - **One datasource per chart.** Every metric in a chart's `values[]`, every fact table, and every raw table must belong to that chart's own `config.datasource`, or the run fails. Different tiles may use different ones.
 - **Always set `unit` explicitly** on each `dataset.values[]` entry, never on the config, which rejects it: `userIdTypes[0]` for `mean`, `proportion`, `retention`, and `dailyParticipation`; `null` for `ratio` and `quantile`. A missing unit is not backfilled — it silently switches to event-level aggregation.
 - **A date range's `predefined` comes from the closed list in the router's shared conventions.** Anything outside it is `customLookback` with `lookbackValue` and `lookbackUnit` (`hour`, `day`, `week`, `month`) — six months is `{ "predefined": "customLookback", "lookbackValue": 6, "lookbackUnit": "month" }`. This holds for `globalControls.dateRange` and each block's `config.dateRange`.
-- **One legend, and only on a new dashboard.** Exactly one `markdown` block, first. No section headings, no per-group captions.
-- **Charts cost money and time.** Every chart block runs a real warehouse query on create. A twelve-tile dashboard is twelve queries — build what the user asked for, not a speculative superset.
+- **No legend block.** The explanation lives in each chart's `description`. No `markdown` intro, section headings or per-group captions unless the user asks for a text block.
+- **Charts cost money and time.** Every chart block runs a real warehouse query when it is added. A twelve-tile dashboard is twelve queries — build what the user asked for, not a speculative superset.
 
 ## Endpoints used
 
@@ -323,7 +343,10 @@ Ask only where the answer changes a block. Everywhere else, build something reas
 - `GET /api/v1/projects` — settle which project the dashboard belongs to
 - `GET /api/v1/fact-metrics` — find chartable metrics
 - `GET /api/v1/fact-tables` and `GET /api/v1/fact-tables/:id` — fact tables, columns, `userIdTypes`, `topValues`
-- `POST /api/v2/dashboards` — create the dashboard, with an optional `owner`
+- `POST /api/v2/dashboards` — create the dashboard unpublished (`isDraft: true`, `blocks: []`), with an optional `owner`
+- `PUT /api/v2/dashboards/:id/draft` — set the draft's title or dashboard-wide controls
+- `POST /api/v2/dashboards/:id/draft/blocks` — add one block; runs its chart
+- `POST /api/v2/dashboards/:id/draft/publish` — publish the draft, only when the user says so
 
 ## Handoffs
 
