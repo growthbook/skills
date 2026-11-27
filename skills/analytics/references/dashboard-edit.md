@@ -45,7 +45,7 @@ A dashboard with an `experimentId` belongs to that experiment and is edited on t
 gb-call GET /api/v2/dashboards/<id>/draft
 ```
 
-This returns the draft, starting one from the published dashboard if there is none: `{ "draft": { "version", "title", "globalControls", "blocks": [...] } }`. Each block carries its `id`, `layout`, and — on a chart block — its `config`. Read it in the same turn you change it; block ids from an earlier turn may be gone.
+This returns the draft, or the published content a new draft would start from. Reading never creates a draft; your first write does: `{ "draft": { "version", "title", "globalControls", "blocks": [...] } }`. Each block carries its `id`, `layout`, and — on a chart block — its `config`. Read it in the same turn you change it; block ids from an earlier turn may be gone.
 
 ### 3. Apply the change
 
@@ -90,7 +90,7 @@ Ownership, sharing and deletion act on the dashboard itself, straight away, with
 - **Read the draft before you change it.** `GET` it in the same turn as the write, and take block ids from that response.
 - **A block is replaced whole.** A `PUT` on a block is the full block, not a patch. Copy it from the draft and change only what was asked.
 - **A chart that cannot run fails only its own call.** Nothing else in the draft changes, and the error names the field. Fix it and send that block again once. If it fails a second time, stop and tell the user rather than guessing another value.
-- **A `409` means the draft was published or discarded while you were working.** `GET` the draft again, which starts a new one, and re-apply the change.
+- **A `409` means the draft was published or discarded while you were working.** `GET` the draft again to see what it holds now, and re-apply the change; the next write starts a new draft.
 - **Never publish on your own.** Publishing changes what everyone with access sees. It waits for the user's word.
 - **The closed `predefined` list applies twice here**: to `globalControls.dateRange` and to each block's `config.dateRange`. The names are in the router's shared conventions; anything outside them is `customLookback`, so six months is `{ "predefined": "customLookback", "lookbackValue": 6, "lookbackUnit": "month" }` in both places.
 - **Charts cost money and time.** Adding or replacing a chart block runs a real warehouse query, and changing the date range re-runs every chart that follows it. Change only what the user asked for.
@@ -100,7 +100,7 @@ Ownership, sharing and deletion act on the dashboard itself, straight away, with
 ## Endpoints used
 
 - `GET /api/v1/dashboards` — list dashboards
-- `GET /api/v2/dashboards/:id/draft` — read the draft, starting one if needed
+- `GET /api/v2/dashboards/:id/draft` — read the draft, or the content a new draft would start from (reading never creates one)
 - `PUT /api/v2/dashboards/:id/draft` — rename, or change dashboard-wide controls
 - `POST /api/v2/dashboards/:id/draft/blocks` — add one block; runs its chart
 - `PUT /api/v2/dashboards/:id/draft/blocks/:blockId` — replace one block; runs its chart
